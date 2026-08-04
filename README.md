@@ -50,3 +50,8 @@ Cole preferencialmente a URL completa do navegador contendo `!1s0x...:0x...`. O 
 - código sugerido automaticamente;
 - feedback de carregamento;
 - diálogo de sucesso com baixar, copiar, testar e iniciar nova empresa.
+
+
+## v2.6
+- Aceita links do Google Maps colados com ou sem `https://`.
+- Normaliza automaticamente URLs como `google.com/maps/place/...`.

@@ -110,7 +110,11 @@ function beginNewCompany() {
 }
 
 async function resolveMapsLink() {
-  const url = $('#mapsUrl').value.trim();
+  let url = $('#mapsUrl').value.trim();
+  if (url && !/^https?:\/\//i.test(url)) {
+    url = `https://${url}`;
+    $('#mapsUrl').value = url;
+  }
   const button = $('#resolveMapsBtn');
   const message = $('#resolverMessage');
   if (!url) { message.textContent = 'Cole a URL completa do Google Maps copiada da barra do navegador.'; message.classList.add('error'); return; }

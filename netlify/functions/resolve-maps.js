@@ -187,7 +187,9 @@ export const handler = async (event) => {
   try {
     let body;
     try { body = JSON.parse(event.body || '{}'); } catch { return json(400, { error: 'JSON inválido.' }); }
-    const sharedUrl = String(body.url || '').trim();
+    let sharedUrl = String(body.url || '').trim();
+    // Aceita URLs copiadas sem o protocolo visível, por exemplo google.com/maps/...
+    if (sharedUrl && !/^https?:\/\//i.test(sharedUrl)) sharedUrl = `https://${sharedUrl}`;
     if (!validUrl(sharedUrl)) return json(400, { error: 'Cole um link válido do Google Maps.' });
 
     const input = new URL(sharedUrl);
