@@ -7,7 +7,7 @@ function makeCode() {
   return out;
 }
 
-export default async (event) => {
+export const handler = async (event) => {
   const p = preflight(event); if (p) return p;
   const auth = requireAdmin(event); if (!auth.ok) return auth.response;
   const s = store();

@@ -1,6 +1,6 @@
 import { json, preflight, requireAdmin, store, cleanCode, validUrl, getIndex, saveIndex } from './_shared.js';
 
-export default async (event) => {
+export const handler = async (event) => {
   const p = preflight(event); if (p) return p;
   const auth = requireAdmin(event); if (!auth.ok) return auth.response;
   const code = cleanCode(event.queryStringParameters?.code || '');

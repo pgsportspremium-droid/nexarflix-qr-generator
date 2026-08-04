@@ -1,6 +1,6 @@
 import { store, cleanCode } from './_shared.js';
 
-export default async (event) => {
+export const handler = async (event) => {
   const code = cleanCode(event.queryStringParameters?.code || '');
   if (!code) return { statusCode: 404, body: 'QR inválido.' };
   const s = store();
