@@ -77,6 +77,41 @@ function extractName(finalUrl, html = '') {
   return '';
 }
 
+
+function findFeatureId(text = '') {
+  const decoded = decodeRepeated(text)
+    .replace(/\\u003d/g, '=')
+    .replace(/\\u0026/g, '&')
+    .replace(/%3A/ig, ':');
+  const patterns = [
+    /(?:!1s|ftid=)(0x[0-9a-f]+:0x[0-9a-f]+)/i,
+    /#lrd=(0x[0-9a-f]+:0x[0-9a-f]+)/i,
+    /(?:^|[^0-9a-f])(0x[0-9a-f]+:0x[0-9a-f]+)(?:[^0-9a-f]|$)/i
+  ];
+  for (const pattern of patterns) {
+    const match = decoded.match(pattern);
+    if (match?.[1]) return match[1].toLowerCase();
+  }
+  return null;
+}
+
+function buildReviewUrlFromFeatureId(featureId, businessName) {
+  const parts = featureId.split(':');
+  if (parts.length !== 2) throw new Error('Identificador do Google Maps inválido.');
+  const ludocid = BigInt(parts[1]).toString(10);
+  const query = businessName || 'empresa';
+  const params = new URLSearchParams({
+    hl: 'pt-BR',
+    gl: 'br',
+    q: query,
+    ludocid
+  });
+  return {
+    ludocid,
+    reviewUrl: `https://www.google.com/search?${params.toString()}#lrd=${featureId},3`
+  };
+}
+
 async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -114,44 +149,41 @@ export const handler = async (event) => {
 
     const finalUrl = response.url || sharedUrl;
     const html = await response.text();
-    let placeId = findPlaceId(sharedUrl) || findPlaceId(finalUrl) || findPlaceId(html);
-    const name = extractName(finalUrl, html);
+    const combined = `${sharedUrl}\n${finalUrl}\n${html}`;
+    const name = extractName(finalUrl, html) || extractName(sharedUrl, '');
 
-    // Alguns links terminam em uma URL com CID/ftid. Tentamos abrir a página canônica,
-    // pois frequentemente o HTML público contém o Place ID estável.
-    if (!placeId) {
-      const combined = decodeRepeated(`${finalUrl}\n${html}`);
-      const featureMatch = combined.match(/(?:ftid=|!1s)(0x[0-9a-f]+:0x[0-9a-f]+)/i);
-      if (featureMatch?.[1]) {
-        const cidHex = featureMatch[1].split(':')[1];
-        const cid = BigInt(cidHex).toString(10);
-        const canonical = `https://www.google.com/maps?cid=${cid}`;
-        const canonicalResponse = await fetchWithTimeout(canonical, {
-          redirect: 'follow',
-          headers: {
-            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36',
-            'accept-language': 'pt-BR,pt;q=0.9,en;q=0.7'
-          }
-        });
-        const canonicalHtml = await canonicalResponse.text();
-        placeId = findPlaceId(canonicalResponse.url) || findPlaceId(canonicalHtml);
-      }
-    }
-
-    if (!placeId) {
-      return json(422, {
-        error: 'O Google não revelou o Place ID nesse link. Use o modo manual somente para este estabelecimento.',
-        resolvedUrl: finalUrl,
+    // Método oficial quando o Place ID está publicamente disponível.
+    const placeId = findPlaceId(combined);
+    if (placeId) {
+      return json(200, {
+        method: 'place-id',
+        placeId,
         name,
-        fallbackUrl: finalUrl
+        reviewUrl: `https://search.google.com/local/writereview?placeid=${encodeURIComponent(placeId)}`,
+        resolvedUrl: finalUrl
       });
     }
 
-    return json(200, {
-      placeId,
+    // Método gratuito para URLs completas do Maps: usa o feature ID público
+    // 0x...:0x..., converte a segunda parte para ludocid e abre #lrd=...,3.
+    const featureId = findFeatureId(combined);
+    if (featureId) {
+      const built = buildReviewUrlFromFeatureId(featureId, name);
+      return json(200, {
+        method: 'feature-id',
+        featureId,
+        ludocid: built.ludocid,
+        name,
+        reviewUrl: built.reviewUrl,
+        resolvedUrl: finalUrl
+      });
+    }
+
+    return json(422, {
+      error: 'Não encontrei o identificador público nessa URL. No computador, abra a empresa no Google Maps e copie a URL completa da barra do navegador.',
+      resolvedUrl: finalUrl,
       name,
-      reviewUrl: `https://search.google.com/local/writereview?placeid=${encodeURIComponent(placeId)}`,
-      resolvedUrl: finalUrl
+      fallbackUrl: finalUrl
     });
   } catch (err) {
     console.error('resolve maps error', err);

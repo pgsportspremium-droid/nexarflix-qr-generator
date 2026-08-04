@@ -37,10 +37,10 @@
         <div id="mapsResolver" class="resolver">
           <div>
             <h3>Modo automático</h3>
-            <p>Pesquise a empresa no Google Maps, toque em <strong>Compartilhar</strong> e cole o link abaixo.</p>
+            <p>No computador, abra a empresa no Google Maps e copie a <strong>URL completa da barra do navegador</strong>. Links curtos também serão tentados.</p>
           </div>
           <div class="resolver-row">
-            <input id="mapsUrl" type="url" placeholder="https://maps.app.goo.gl/..." />
+            <input id="mapsUrl" type="url" placeholder="https://www.google.com/maps/place/..." />
             <button type="button" id="resolveMapsBtn">Preencher automaticamente</button>
           </div>
           <p id="resolverMessage" class="message"></p>
@@ -54,7 +54,7 @@
         <form id="clientForm" class="grid-form">
           <input id="editingCode" type="hidden" />
           <label>Nome da empresa<input id="name" maxlength="120" placeholder="Ex.: Restaurante Trilhos" required /></label>
-          <label>Link direto de avaliação<input id="destination" type="url" placeholder="Preenchido automaticamente ou colado manualmente" required /></label>
+          <label>Link direto de avaliação<div class="input-with-button"><input id="destination" type="url" placeholder="Preenchido automaticamente ou colado manualmente" required /><button type="button" id="testReviewBtn" class="ghost" disabled>Testar avaliação</button></div></label>
           <label>Código personalizado <small>(opcional)</small><input id="code" maxlength="32" placeholder="TRILHOS" /></label>
           <div class="actions"><button type="submit" id="saveBtn">Criar QR permanente</button><button type="button" class="ghost" id="cancelEdit" hidden>Cancelar edição</button></div>
         </form>

@@ -70,7 +70,7 @@ async function resolveMapsLink() {
   const url = $('#mapsUrl').value.trim();
   const button = $('#resolveMapsBtn');
   const message = $('#resolverMessage');
-  if (!url) { message.textContent = 'Cole o link compartilhado do Google Maps.'; message.classList.add('error'); return; }
+  if (!url) { message.textContent = 'Cole a URL completa do Google Maps copiada da barra do navegador.'; message.classList.add('error'); return; }
   button.disabled = true;
   button.textContent = 'Identificando...';
   message.textContent = 'Consultando o link público do Google Maps...';
@@ -79,9 +79,10 @@ async function resolveMapsLink() {
     const result = await api('resolve-maps', { method:'POST', body:JSON.stringify({ url }) });
     if (result.name && !$('#name').value.trim()) $('#name').value = result.name;
     $('#destination').value = result.reviewUrl;
-    message.textContent = `Pronto. Link direto de avaliação criado${result.name ? ` para ${result.name}` : ''}. Confira os dados e clique em Criar QR permanente.`;
+    message.textContent = `Pronto. Link direto de avaliação criado${result.name ? ` para ${result.name}` : ''}. Clique em Testar avaliação e confirme que a caixa de texto abriu antes de salvar.`;
+    updateTestButton();
   } catch (err) {
-    message.textContent = `${err.message} Abra a ficha do local, procure “Pedir avaliações” com o proprietário ou cole o link direto no modo manual.`;
+    message.textContent = `${err.message} Como alternativa, cole o link direto de avaliação no modo manual.`;
     message.classList.add('error');
   } finally {
     button.disabled = false;
@@ -91,6 +92,17 @@ async function resolveMapsLink() {
 
 $('#resolveMapsBtn').addEventListener('click', resolveMapsLink);
 $('#mapsUrl').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); resolveMapsLink(); } });
+
+function updateTestButton() {
+  const value = $('#destination').value.trim();
+  $('#testReviewBtn').disabled = !/^https?:\/\//i.test(value);
+}
+$('#destination').addEventListener('input', updateTestButton);
+$('#testReviewBtn').addEventListener('click', () => {
+  const url = $('#destination').value.trim();
+  if (!url) return;
+  window.open(url, '_blank', 'noopener,noreferrer');
+});
 
 $('#clientForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -105,7 +117,7 @@ $('#clientForm').addEventListener('submit', async (e) => {
   } catch (err) { $('#formMessage').textContent = err.message; }
 });
 
-function resetForm(){ $('#clientForm').reset(); $('#mapsUrl').value=''; $('#resolverMessage').textContent=''; $('#resolverMessage').classList.remove('error'); $('#editingCode').value=''; $('#code').disabled=false; $('#formTitle').textContent='Nova empresa'; $('#saveBtn').textContent='Criar QR permanente'; $('#cancelEdit').hidden=true; }
+function resetForm(){ $('#clientForm').reset(); $('#mapsUrl').value=''; $('#testReviewBtn').disabled=true; $('#resolverMessage').textContent=''; $('#resolverMessage').classList.remove('error'); $('#editingCode').value=''; $('#code').disabled=false; $('#formTitle').textContent='Nova empresa'; $('#saveBtn').textContent='Criar QR permanente'; $('#cancelEdit').hidden=true; }
 $('#cancelEdit').addEventListener('click', resetForm);
 
 $('#clients').addEventListener('click', async (e) => {
@@ -113,7 +125,7 @@ $('#clients').addEventListener('click', async (e) => {
   const c = clients.find(x => x.code === btn.dataset.code); if (!c) return;
   const url = `${location.origin}/r/${c.code}`;
   if (btn.dataset.action === 'copy') { await navigator.clipboard.writeText(url); btn.textContent='Copiado!'; setTimeout(()=>btn.textContent='Copiar',1000); }
-  if (btn.dataset.action === 'edit') { $('#editingCode').value=c.code; $('#name').value=c.name; $('#destination').value=c.destination; $('#code').value=c.code; $('#code').disabled=true; $('#formTitle').textContent='Editar empresa'; $('#saveBtn').textContent='Salvar alterações'; $('#cancelEdit').hidden=false; scrollTo({top:0,behavior:'smooth'}); }
+  if (btn.dataset.action === 'edit') { $('#editingCode').value=c.code; $('#name').value=c.name; $('#destination').value=c.destination; updateTestButton(); $('#code').value=c.code; $('#code').disabled=true; $('#formTitle').textContent='Editar empresa'; $('#saveBtn').textContent='Salvar alterações'; $('#cancelEdit').hidden=false; scrollTo({top:0,behavior:'smooth'}); }
   if (btn.dataset.action === 'delete' && confirm(`Excluir ${c.name}? O QR deixará de funcionar.`)) { await api(`client?code=${encodeURIComponent(c.code)}`, {method:'DELETE'}); await loadClients(); }
   if (btn.dataset.action === 'qr') openQr(c);
 });

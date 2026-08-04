@@ -1,4 +1,4 @@
-# Nexar Connect v2.2
+# Nexar Connect v2.3
 
 MVP no Netlify + Supabase com:
 
@@ -31,3 +31,7 @@ No Netlify, aguarde o deploy. A lista de Functions deverá incluir `resolve-maps
 6. Clique em **Criar QR permanente**.
 
 A extração é feita por dados públicos e não usa a API paga do Google. Alguns formatos do Maps escondem o Place ID; nesses casos, o sistema informa que o modo manual é necessário.
+
+
+## Conversão gratuita de URL do Google Maps
+Cole preferencialmente a URL completa do navegador contendo `!1s0x...:0x...`. O sistema extrai o feature ID, converte o CID hexadecimal para decimal (`ludocid`) e monta o link de escrita de avaliação com `#lrd=...,3`. Sempre use o botão **Testar avaliação** antes de imprimir a placa.
