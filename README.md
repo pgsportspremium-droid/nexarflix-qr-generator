@@ -1,14 +1,17 @@
-# Nexar Connect — Supabase v2
+# Nexar Connect — Supabase v2.1
 
-MVP com painel administrativo, cadastro, edição, exclusão, QR PNG, link permanente e contador básico de acessos.
+Correções desta versão:
+
+- o endereço `/r/CODIGO` envia corretamente o código para a Function de redirecionamento;
+- a Function também extrai o código do caminho como proteção adicional;
+- o QR é gerado no servidor, sem depender de biblioteca externa carregada no navegador;
+- download do QR em PNG de 1200 px.
 
 ## Variáveis no Netlify
 
 - `ADMIN_PASSWORD`
 - `SUPABASE_URL`
-- `SUPABASE_SECRET_KEY` (chave Secret atual) ou `SUPABASE_SERVICE_ROLE_KEY` (legada)
-
-Nunca coloque a chave Secret/Service Role em arquivos da pasta `public`.
+- `SUPABASE_SECRET_KEY`
 
 ## Banco
 

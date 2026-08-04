@@ -12,5 +12,6 @@
 
 [[redirects]]
   from = "/r/*"
-  to = "/.netlify/functions/redirect?code=:splat"
+  to = "/.netlify/functions/redirect/:splat"
   status = 200
+  force = true

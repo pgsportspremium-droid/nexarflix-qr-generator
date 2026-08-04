@@ -91,15 +91,23 @@ $('#clients').addEventListener('click', async (e) => {
   if (btn.dataset.action === 'qr') openQr(c);
 });
 
-async function openQr(c) {
+function openQr(c) {
   currentQr = { name:c.name, url:`${location.origin}/r/${c.code}`, code:c.code };
   $('#qrTitle').textContent = c.name;
   $('#qrUrl').textContent = currentQr.url;
-  await QRCode.toCanvas($('#qrCanvas'), currentQr.url, { width:800, margin:4, errorCorrectionLevel:'H', color:{dark:'#111111',light:'#ffffff'} });
+  $('#qrImage').src = `/api/qr?text=${encodeURIComponent(currentQr.url)}&code=${encodeURIComponent(c.code)}`;
   $('#qrDialog').showModal();
 }
 $('#closeDialog').addEventListener('click',()=>$('#qrDialog').close());
 $('#copyQr').addEventListener('click', async()=>{ await navigator.clipboard.writeText(currentQr.url); $('#copyQr').textContent='Copiado!'; setTimeout(()=>$('#copyQr').textContent='Copiar link',1000); });
-$('#downloadQr').addEventListener('click',()=>{ const a=document.createElement('a'); a.download=`QR-${currentQr.code}-${currentQr.name.replace(/[^a-z0-9]+/gi,'-')}.png`; a.href=$('#qrCanvas').toDataURL('image/png'); a.click(); });
+$('#downloadQr').addEventListener('click',()=>{
+  if (!currentQr) return;
+  const a=document.createElement('a');
+  a.download=`QR-${currentQr.code}-${currentQr.name.replace(/[^a-z0-9]+/gi,'-')}.png`;
+  a.href=`/api/qr?text=${encodeURIComponent(currentQr.url)}&code=${encodeURIComponent(currentQr.code)}`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+});
 
 if (password) showApp();

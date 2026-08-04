@@ -1,0 +1,15 @@
+{
+  "name": "nexar-connect-supabase",
+  "version": "2.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "netlify dev"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "netlify-cli": "^23.0.0"
+  }
+}

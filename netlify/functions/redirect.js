@@ -4,12 +4,32 @@ function html(statusCode, title, message) {
   return {
     statusCode,
     headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
-    body: `<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><body style="font-family:Arial,sans-serif;padding:40px;max-width:620px;margin:auto"><h1>${title}</h1><p>${message}</p></body></html>`
+    body: `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title></head><body style="font-family:Arial,sans-serif;padding:40px;max-width:620px;margin:auto"><h1>${title}</h1><p>${message}</p></body></html>`
   };
 }
 
+function extractCode(event) {
+  const queryCode = event.queryStringParameters?.code;
+  if (queryCode) return cleanCode(queryCode);
+
+  const candidates = [event.path, event.rawUrl, event.rawPath].filter(Boolean);
+  for (const value of candidates) {
+    try {
+      const pathname = value.startsWith('http') ? new URL(value).pathname : value;
+      const parts = pathname.split('/').filter(Boolean);
+      const markerIndex = parts.lastIndexOf('redirect');
+      const raw = markerIndex >= 0 ? parts[markerIndex + 1] : parts.at(-1);
+      const code = cleanCode(decodeURIComponent(raw || ''));
+      if (code && code !== 'REDIRECT') return code;
+    } catch {
+      // Tenta a próxima origem disponível.
+    }
+  }
+  return '';
+}
+
 export const handler = async (event) => {
-  const code = cleanCode(event.queryStringParameters?.code || '');
+  const code = extractCode(event);
   if (!code) return html(404, 'QR inválido', 'O código informado não é válido.');
 
   try {
