@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Nexar Connect — Gerador de QR</title>
+  <link rel="stylesheet" href="/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js" defer></script>
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <main class="shell">
+    <section id="loginView" class="card login-card">
+      <div class="brand"><span>N</span><div><strong>Nexar Connect</strong><small>QR permanente para negócios</small></div></div>
+      <h1>Acessar painel</h1>
+      <p>Use a senha administrativa configurada no Netlify.</p>
+      <form id="loginForm">
+        <label>Senha<input id="password" type="password" autocomplete="current-password" required /></label>
+        <button type="submit">Entrar</button>
+      </form>
+      <p id="loginError" class="error"></p>
+    </section>
+
+    <section id="appView" hidden>
+      <header class="topbar">
+        <div class="brand"><span>N</span><div><strong>Nexar Connect</strong><small>Painel administrativo</small></div></div>
+        <button id="logoutBtn" class="ghost">Sair</button>
+      </header>
+
+      <div class="stats">
+        <article><small>Empresas</small><strong id="totalClients">0</strong></article>
+        <article><small>Acessos totais</small><strong id="totalAccesses">0</strong></article>
+        <article><small>Último acesso</small><strong id="lastAccess">—</strong></article>
+      </div>
+
+      <section class="card">
+        <div class="section-head"><div><h2 id="formTitle">Nova empresa</h2><p>O QR apontará para um link permanente do seu projeto.</p></div></div>
+        <form id="clientForm" class="grid-form">
+          <input id="editingCode" type="hidden" />
+          <label>Nome da empresa<input id="name" maxlength="120" placeholder="Ex.: Restaurante Trilhos" required /></label>
+          <label>Link de destino<input id="destination" type="url" placeholder="https://search.google.com/local/writereview?..." required /></label>
+          <label>Código personalizado <small>(opcional)</small><input id="code" maxlength="32" placeholder="TRILHOS" /></label>
+          <div class="actions"><button type="submit" id="saveBtn">Criar QR permanente</button><button type="button" class="ghost" id="cancelEdit" hidden>Cancelar edição</button></div>
+        </form>
+        <p id="formMessage" class="message"></p>
+      </section>
+
+      <section class="card">
+        <div class="section-head"><div><h2>Empresas cadastradas</h2><p>Edite o destino sem precisar trocar o QR impresso.</p></div><input id="search" class="search" placeholder="Pesquisar empresa..." /></div>
+        <div id="clients" class="clients"></div>
+      </section>
+    </section>
+  </main>
+
+  <dialog id="qrDialog">
+    <button id="closeDialog" class="dialog-close" aria-label="Fechar">×</button>
+    <h2 id="qrTitle">QR Code</h2>
+    <canvas id="qrCanvas" width="800" height="800"></canvas>
+    <p id="qrUrl" class="qr-url"></p>
+    <div class="actions"><button id="downloadQr">Baixar PNG</button><button id="copyQr" class="ghost">Copiar link</button></div>
+  </dialog>
+</body>
+</html>
