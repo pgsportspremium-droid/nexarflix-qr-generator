@@ -1,4 +1,4 @@
-import { json, preflight, requireAdmin, store, cleanCode, validUrl, getIndex, saveIndex } from './_shared.js';
+import { json, preflight, requireAdmin, cleanCode, validUrl, supabase, toClient } from './_shared.js';
 
 function makeCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -7,42 +7,48 @@ function makeCode() {
   return out;
 }
 
+async function codeExists(code) {
+  const rows = await supabase(`companies?select=id&code=eq.${encodeURIComponent(code)}&limit=1`);
+  return Array.isArray(rows) && rows.length > 0;
+}
+
 export const handler = async (event) => {
   const p = preflight(event); if (p) return p;
   const auth = requireAdmin(event); if (!auth.ok) return auth.response;
-  const s = store();
 
-  if (event.httpMethod === 'GET') {
-    const index = await getIndex(s);
-    const clients = [];
-    for (const code of index) {
-      const item = await s.get(`client:${code}`, { type: 'json' });
-      if (item) clients.push(item);
+  try {
+    if (event.httpMethod === 'GET') {
+      const rows = await supabase('companies?select=*&order=created_at.desc');
+      return json(200, { clients: rows.map(toClient) });
     }
-    clients.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
-    return json(200, { clients });
-  }
 
-  if (event.httpMethod === 'POST') {
-    let body; try { body = JSON.parse(event.body || '{}'); } catch { return json(400, { error: 'JSON inválido.' }); }
-    const name = String(body.name || '').trim().slice(0, 120);
-    const destination = String(body.destination || '').trim();
-    if (!name) return json(400, { error: 'Informe o nome da empresa.' });
-    if (!validUrl(destination)) return json(400, { error: 'Informe uma URL válida com http ou https.' });
-    let code = cleanCode(body.code || '');
-    if (!code) {
-      do { code = makeCode(); } while (await s.get(`client:${code}`));
-    } else if (await s.get(`client:${code}`)) {
-      return json(409, { error: 'Esse código já existe.' });
+    if (event.httpMethod === 'POST') {
+      let body;
+      try { body = JSON.parse(event.body || '{}'); } catch { return json(400, { error: 'JSON inválido.' }); }
+      const name = String(body.name || '').trim().slice(0, 120);
+      const destination = String(body.destination || '').trim();
+      if (!name) return json(400, { error: 'Informe o nome da empresa.' });
+      if (!validUrl(destination)) return json(400, { error: 'Informe uma URL válida com http ou https.' });
+
+      let code = cleanCode(body.code || '');
+      if (!code) {
+        do { code = makeCode(); } while (await codeExists(code));
+      } else if (await codeExists(code)) {
+        return json(409, { error: 'Esse código já existe.' });
+      }
+
+      const rows = await supabase('companies', {
+        method: 'POST',
+        headers: { prefer: 'return=representation' },
+        body: JSON.stringify({ name, code, destination, hits: 0 })
+      });
+      return json(201, { client: toClient(rows[0]) });
     }
-    const now = new Date().toISOString();
-    const client = { code, name, destination, accesses: 0, createdAt: now, updatedAt: now, lastAccessAt: null };
-    await s.setJSON(`client:${code}`, client);
-    const index = await getIndex(s);
-    index.push(code);
-    await saveIndex(s, [...new Set(index)]);
-    return json(201, { client });
-  }
 
-  return json(405, { error: 'Método não permitido.' });
+    return json(405, { error: 'Método não permitido.' });
+  } catch (err) {
+    console.error('clients error', err);
+    if (err.code === '23505') return json(409, { error: 'Esse código já existe.' });
+    return json(err.status || 500, { error: err.message || 'Erro ao acessar o banco.' });
+  }
 };
