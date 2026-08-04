@@ -40,3 +40,13 @@ A extração é feita por dados públicos e não usa a API paga do Google. Algun
 
 ## Conversão gratuita de URL do Google Maps
 Cole preferencialmente a URL completa do navegador contendo `!1s0x...:0x...`. O sistema extrai o feature ID, converte o CID hexadecimal para decimal (`ludocid`) e monta o link de escrita de avaliação com `#lrd=...,3`. Sempre use o botão **Testar avaliação** antes de imprimir a placa.
+
+
+## Versão 2.5
+- limpa automaticamente dados antigos ao analisar uma nova URL;
+- botão Nova empresa;
+- botões separados para abrir no Maps e testar avaliação;
+- confirmação obrigatória antes de salvar no fluxo automático;
+- código sugerido automaticamente;
+- feedback de carregamento;
+- diálogo de sucesso com baixar, copiar, testar e iniciar nova empresa.

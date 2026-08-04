@@ -33,7 +33,7 @@
       </div>
 
       <section class="card">
-        <div class="section-head"><div><h2 id="formTitle">Nova empresa</h2><p>O QR apontará para um link permanente do seu projeto.</p></div></div>
+        <div class="section-head"><div><h2 id="formTitle">Nova empresa</h2><p>O QR apontará para um link permanente do seu projeto.</p></div><button type="button" id="newCompanyBtn" class="ghost">+ Nova empresa</button></div>
         <div id="mapsResolver" class="resolver">
           <div>
             <h3>Modo automático</h3>
@@ -45,6 +45,19 @@
           </div>
           <p id="resolverMessage" class="message"></p>
         </div>
+
+        <section id="resolvedCard" class="resolved-card" hidden>
+          <div>
+            <small>Empresa identificada</small>
+            <h3 id="resolvedName">—</h3>
+            <p id="resolvedLocation">Confira o estabelecimento antes de salvar.</p>
+          </div>
+          <div class="verify-actions">
+            <button type="button" id="openMapsBtn" class="ghost">Abrir no Maps</button>
+            <button type="button" id="testResolvedReviewBtn">Testar avaliação</button>
+          </div>
+          <label class="confirm-row"><input id="confirmedBusiness" type="checkbox" /> Conferi o estabelecimento no Maps e a caixa de avaliação abriu corretamente.</label>
+        </section>
 
         <details class="manual-mode">
           <summary>Modo manual / conferir dados</summary>
@@ -73,7 +86,7 @@
     <h2 id="qrTitle">QR Code</h2>
     <img id="qrImage" alt="QR Code" />
     <p id="qrUrl" class="qr-url"></p>
-    <div class="actions"><button id="downloadQr">Baixar PNG</button><button id="copyQr" class="ghost">Copiar link</button></div>
+    <div class="actions"><button id="downloadQr">Baixar PNG</button><button id="copyQr" class="ghost">Copiar link</button><button id="testQr" class="ghost">Testar QR</button><button id="dialogNewCompany" class="ghost">+ Nova empresa</button></div>
   </dialog>
 </body>
 </html>

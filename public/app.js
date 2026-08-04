@@ -2,6 +2,9 @@ const $ = (s) => document.querySelector(s);
 let password = sessionStorage.getItem('nexar_admin') || '';
 let clients = [];
 let currentQr = null;
+let resolvedMapsUrl = '';
+let resolvedReviewUrl = '';
+let isResolving = false;
 
 async function api(path, options = {}) {
   const res = await fetch(`/api/${path}`, {
@@ -65,67 +68,173 @@ function render() {
 function escapeHtml(v='') { return v.replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch])); }
 $('#search').addEventListener('input', render);
 
+function slugifyCode(name='') {
+  return name.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase()
+    .replace(/\b(RESTAURANTE|LANCHONETE|PIZZARIA|HOTEL|POUSADA|BAR|LOJA|CLINICA|ACADEMIA)\b/g,' ')
+    .replace(/[^A-Z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,32) || 'EMPRESA';
+}
+
+function clearResolvedState({ keepMapsUrl = true } = {}) {
+  resolvedMapsUrl = '';
+  resolvedReviewUrl = '';
+  $('#resolvedCard').hidden = true;
+  $('#resolvedName').textContent = '—';
+  $('#resolvedLocation').textContent = 'Confira o estabelecimento antes de salvar.';
+  $('#confirmedBusiness').checked = false;
+  if (!keepMapsUrl) $('#mapsUrl').value = '';
+  updateSaveAvailability();
+}
+
+function clearCompanyFields() {
+  $('#name').value = '';
+  $('#destination').value = '';
+  $('#code').value = '';
+  $('#formMessage').textContent = '';
+  updateTestButton();
+}
+
+function beginNewCompany() {
+  $('#clientForm').reset();
+  $('#mapsUrl').value = '';
+  $('#editingCode').value = '';
+  $('#code').disabled = false;
+  $('#formTitle').textContent = 'Nova empresa';
+  $('#saveBtn').textContent = 'Criar QR permanente';
+  $('#saveBtn').disabled = false;
+  $('#cancelEdit').hidden = true;
+  $('#resolverMessage').textContent = '';
+  $('#resolverMessage').classList.remove('error');
+  clearResolvedState({ keepMapsUrl:false });
+  updateTestButton();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
 
 async function resolveMapsLink() {
   const url = $('#mapsUrl').value.trim();
   const button = $('#resolveMapsBtn');
   const message = $('#resolverMessage');
   if (!url) { message.textContent = 'Cole a URL completa do Google Maps copiada da barra do navegador.'; message.classList.add('error'); return; }
+
+  // Uma nova conversão sempre substitui os dados anteriores, evitando mistura entre empresas.
+  clearCompanyFields();
+  clearResolvedState();
+  isResolving = true;
   button.disabled = true;
-  button.textContent = 'Identificando...';
-  message.textContent = 'Consultando o link público do Google Maps...';
+  button.textContent = 'Analisando...';
+  message.textContent = 'Identificando o estabelecimento e preparando o link de avaliação...';
   message.classList.remove('error');
+  updateSaveAvailability();
+
   try {
     const result = await api('resolve-maps', { method:'POST', body:JSON.stringify({ url }) });
-    if (result.name && !$('#name').value.trim()) $('#name').value = result.name;
+    resolvedMapsUrl = result.resolvedUrl || url;
+    resolvedReviewUrl = result.reviewUrl;
+    $('#name').value = result.name || '';
     $('#destination').value = result.reviewUrl;
-    message.textContent = `Pronto. Link direto criado${result.name ? ` para ${result.name}` : ''}${result.location?.city ? ` em ${result.location.city}` : ''}. Clique em Testar avaliação e confirme que a caixa de texto abriu antes de salvar.`;
+    $('#code').value = slugifyCode(result.name || '');
+    $('#resolvedName').textContent = result.name || 'Estabelecimento identificado';
+    $('#resolvedLocation').textContent = result.location?.shortAddress || result.location?.displayName || 'Abra no Maps e confira o endereço correto.';
+    $('#resolvedCard').hidden = false;
+    message.textContent = 'Dados preenchidos. Agora abra o estabelecimento no Maps, teste a avaliação e confirme antes de criar o QR.';
     updateTestButton();
   } catch (err) {
     message.textContent = `${err.message} Como alternativa, cole o link direto de avaliação no modo manual.`;
     message.classList.add('error');
   } finally {
+    isResolving = false;
     button.disabled = false;
     button.textContent = 'Preencher automaticamente';
+    updateSaveAvailability();
   }
 }
 
 $('#resolveMapsBtn').addEventListener('click', resolveMapsLink);
 $('#mapsUrl').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); resolveMapsLink(); } });
+$('#mapsUrl').addEventListener('input', () => {
+  if (resolvedMapsUrl || $('#destination').value || $('#name').value) {
+    clearCompanyFields();
+    clearResolvedState();
+    $('#resolverMessage').textContent = 'Nova URL detectada. Clique em Preencher automaticamente para substituir os dados anteriores.';
+    $('#resolverMessage').classList.remove('error');
+  }
+});
 
 function updateTestButton() {
   const value = $('#destination').value.trim();
   $('#testReviewBtn').disabled = !/^https?:\/\//i.test(value);
 }
-$('#destination').addEventListener('input', updateTestButton);
+function updateSaveAvailability() {
+  const editing = Boolean($('#editingCode').value);
+  const automaticFlow = Boolean(resolvedReviewUrl);
+  $('#saveBtn').disabled = isResolving || (!editing && automaticFlow && !$('#confirmedBusiness').checked);
+}
+
+$('#destination').addEventListener('input', () => { updateTestButton(); updateSaveAvailability(); });
+$('#confirmedBusiness').addEventListener('change', updateSaveAvailability);
 $('#testReviewBtn').addEventListener('click', () => {
   const url = $('#destination').value.trim();
-  if (!url) return;
-  window.open(url, '_blank', 'noopener,noreferrer');
+  if (url) window.open(url, '_blank', 'noopener,noreferrer');
+});
+$('#openMapsBtn').addEventListener('click', () => {
+  if (resolvedMapsUrl) window.open(resolvedMapsUrl, '_blank', 'noopener,noreferrer');
+});
+$('#testResolvedReviewBtn').addEventListener('click', () => {
+  if (resolvedReviewUrl) window.open(resolvedReviewUrl, '_blank', 'noopener,noreferrer');
 });
 
 $('#clientForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const editing = $('#editingCode').value;
+  if (!editing && resolvedReviewUrl && !$('#confirmedBusiness').checked) {
+    $('#formMessage').textContent = 'Antes de criar o QR, confirme que abriu o estabelecimento correto e que a caixa de avaliação funcionou.';
+    return;
+  }
   const payload = { name: $('#name').value, destination: $('#destination').value, code: $('#code').value };
+  const originalText = $('#saveBtn').textContent;
+  $('#saveBtn').disabled = true;
+  $('#saveBtn').textContent = editing ? 'Salvando...' : 'Gerando...';
   try {
-    if (editing) await api(`client?code=${encodeURIComponent(editing)}`, { method:'PUT', body:JSON.stringify(payload) });
-    else await api('clients', { method:'POST', body:JSON.stringify(payload) });
-    $('#formMessage').textContent = editing ? 'Empresa atualizada.' : 'Empresa criada e QR permanente disponível.';
-    resetForm();
+    let saved;
+    if (editing) saved = await api(`client?code=${encodeURIComponent(editing)}`, { method:'PUT', body:JSON.stringify(payload) });
+    else saved = await api('clients', { method:'POST', body:JSON.stringify(payload) });
     await loadClients();
-  } catch (err) { $('#formMessage').textContent = err.message; }
+    const created = clients.find(c => c.code === (saved.client?.code || payload.code.toUpperCase())) || saved.client;
+    $('#formMessage').textContent = editing ? 'Empresa atualizada.' : 'QR criado com sucesso.';
+    if (!editing && created) openQr(created);
+    resetForm();
+  } catch (err) {
+    $('#formMessage').textContent = err.message;
+  } finally {
+    $('#saveBtn').textContent = originalText;
+    updateSaveAvailability();
+  }
 });
 
-function resetForm(){ $('#clientForm').reset(); $('#mapsUrl').value=''; $('#testReviewBtn').disabled=true; $('#resolverMessage').textContent=''; $('#resolverMessage').classList.remove('error'); $('#editingCode').value=''; $('#code').disabled=false; $('#formTitle').textContent='Nova empresa'; $('#saveBtn').textContent='Criar QR permanente'; $('#cancelEdit').hidden=true; }
+function resetForm(){
+  $('#clientForm').reset();
+  $('#mapsUrl').value='';
+  $('#testReviewBtn').disabled=true;
+  $('#resolverMessage').textContent='';
+  $('#resolverMessage').classList.remove('error');
+  $('#editingCode').value='';
+  $('#code').disabled=false;
+  $('#formTitle').textContent='Nova empresa';
+  $('#saveBtn').textContent='Criar QR permanente';
+  $('#cancelEdit').hidden=true;
+  clearResolvedState({ keepMapsUrl:false });
+}
 $('#cancelEdit').addEventListener('click', resetForm);
+$('#newCompanyBtn').addEventListener('click', beginNewCompany);
 
 $('#clients').addEventListener('click', async (e) => {
   const btn = e.target.closest('button[data-action]'); if (!btn) return;
   const c = clients.find(x => x.code === btn.dataset.code); if (!c) return;
   const url = `${location.origin}/r/${c.code}`;
   if (btn.dataset.action === 'copy') { await navigator.clipboard.writeText(url); btn.textContent='Copiado!'; setTimeout(()=>btn.textContent='Copiar',1000); }
-  if (btn.dataset.action === 'edit') { $('#editingCode').value=c.code; $('#name').value=c.name; $('#destination').value=c.destination; updateTestButton(); $('#code').value=c.code; $('#code').disabled=true; $('#formTitle').textContent='Editar empresa'; $('#saveBtn').textContent='Salvar alterações'; $('#cancelEdit').hidden=false; scrollTo({top:0,behavior:'smooth'}); }
+  if (btn.dataset.action === 'edit') {
+    clearResolvedState({ keepMapsUrl:false });
+    $('#editingCode').value=c.code; $('#name').value=c.name; $('#destination').value=c.destination; updateTestButton(); $('#code').value=c.code; $('#code').disabled=true; $('#formTitle').textContent='Editar empresa'; $('#saveBtn').textContent='Salvar alterações'; $('#cancelEdit').hidden=false; updateSaveAvailability(); scrollTo({top:0,behavior:'smooth'});
+  }
   if (btn.dataset.action === 'delete' && confirm(`Excluir ${c.name}? O QR deixará de funcionar.`)) { await api(`client?code=${encodeURIComponent(c.code)}`, {method:'DELETE'}); await loadClients(); }
   if (btn.dataset.action === 'qr') openQr(c);
 });
@@ -139,14 +248,14 @@ function openQr(c) {
 }
 $('#closeDialog').addEventListener('click',()=>$('#qrDialog').close());
 $('#copyQr').addEventListener('click', async()=>{ await navigator.clipboard.writeText(currentQr.url); $('#copyQr').textContent='Copiado!'; setTimeout(()=>$('#copyQr').textContent='Copiar link',1000); });
+$('#testQr').addEventListener('click',()=>{ if (currentQr) window.open(currentQr.url,'_blank','noopener,noreferrer'); });
+$('#dialogNewCompany').addEventListener('click',()=>{ $('#qrDialog').close(); beginNewCompany(); });
 $('#downloadQr').addEventListener('click',()=>{
   if (!currentQr) return;
   const a=document.createElement('a');
   a.download=`QR-${currentQr.code}-${currentQr.name.replace(/[^a-z0-9]+/gi,'-')}.png`;
   a.href=`/api/qr?text=${encodeURIComponent(currentQr.url)}&code=${encodeURIComponent(currentQr.code)}`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+  document.body.appendChild(a); a.click(); a.remove();
 });
 
 if (password) showApp();
