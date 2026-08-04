@@ -95,11 +95,68 @@ function findFeatureId(text = '') {
   return null;
 }
 
-function buildReviewUrlFromFeatureId(featureId, businessName) {
+
+function extractCoordinates(text = '') {
+  const decoded = decodeRepeated(text);
+  const patterns = [
+    /\/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/,
+    /!3d(-?\d+(?:\.\d+)?)[^!]*!4d(-?\d+(?:\.\d+)?)/,
+    /[?&](?:query|q)=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/
+  ];
+  for (const pattern of patterns) {
+    const match = decoded.match(pattern);
+    if (match) {
+      const lat = Number(match[1]);
+      const lon = Number(match[2]);
+      if (Number.isFinite(lat) && Number.isFinite(lon)) return { lat, lon };
+    }
+  }
+  return null;
+}
+
+async function reverseGeocode(coords) {
+  if (!coords) return null;
+  const url = new URL('https://nominatim.openstreetmap.org/reverse');
+  url.searchParams.set('format', 'jsonv2');
+  url.searchParams.set('lat', String(coords.lat));
+  url.searchParams.set('lon', String(coords.lon));
+  url.searchParams.set('zoom', '18');
+  url.searchParams.set('addressdetails', '1');
+  url.searchParams.set('accept-language', 'pt-BR');
+
+  try {
+    const response = await fetchWithTimeout(url.toString(), {
+      headers: {
+        'user-agent': 'NexarConnect/1.0 (+https://nexar-connect.netlify.app)',
+        'referer': 'https://nexar-connect.netlify.app/'
+      }
+    }, 8000);
+    if (!response.ok) return null;
+    const data = await response.json();
+    const address = data?.address || {};
+    const city = address.city || address.town || address.village || address.municipality || '';
+    const state = address.state || '';
+    const postcode = address.postcode || '';
+    const road = address.road || address.pedestrian || address.square || '';
+    const houseNumber = address.house_number || '';
+    const shortAddress = [
+      [road, houseNumber].filter(Boolean).join(', '),
+      city,
+      state,
+      postcode
+    ].filter(Boolean).join(' - ');
+    return { city, state, postcode, shortAddress, displayName: data?.display_name || '' };
+  } catch (error) {
+    console.warn('reverse geocode unavailable', error?.message || error);
+    return null;
+  }
+}
+
+function buildReviewUrlFromFeatureId(featureId, businessName, locationText = '') {
   const parts = featureId.split(':');
   if (parts.length !== 2) throw new Error('Identificador do Google Maps inválido.');
   const ludocid = BigInt(parts[1]).toString(10);
-  const query = businessName || 'empresa';
+  const query = [businessName || 'empresa', locationText].filter(Boolean).join(' - ');
   const params = new URLSearchParams({
     hl: 'pt-BR',
     gl: 'br',
@@ -168,12 +225,18 @@ export const handler = async (event) => {
     // 0x...:0x..., converte a segunda parte para ludocid e abre #lrd=...,3.
     const featureId = findFeatureId(combined);
     if (featureId) {
-      const built = buildReviewUrlFromFeatureId(featureId, name);
+      const coordinates = extractCoordinates(`${sharedUrl}\n${finalUrl}`);
+      const geo = await reverseGeocode(coordinates);
+      const locationText = geo?.shortAddress
+        || (coordinates ? `${coordinates.lat}, ${coordinates.lon}` : '');
+      const built = buildReviewUrlFromFeatureId(featureId, name, locationText);
       return json(200, {
         method: 'feature-id',
         featureId,
         ludocid: built.ludocid,
         name,
+        coordinates,
+        location: geo,
         reviewUrl: built.reviewUrl,
         resolvedUrl: finalUrl
       });

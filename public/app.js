@@ -79,7 +79,7 @@ async function resolveMapsLink() {
     const result = await api('resolve-maps', { method:'POST', body:JSON.stringify({ url }) });
     if (result.name && !$('#name').value.trim()) $('#name').value = result.name;
     $('#destination').value = result.reviewUrl;
-    message.textContent = `Pronto. Link direto de avaliação criado${result.name ? ` para ${result.name}` : ''}. Clique em Testar avaliação e confirme que a caixa de texto abriu antes de salvar.`;
+    message.textContent = `Pronto. Link direto criado${result.name ? ` para ${result.name}` : ''}${result.location?.city ? ` em ${result.location.city}` : ''}. Clique em Testar avaliação e confirme que a caixa de texto abriu antes de salvar.`;
     updateTestButton();
   } catch (err) {
     message.textContent = `${err.message} Como alternativa, cole o link direto de avaliação no modo manual.`;

@@ -1,3 +1,8 @@
+# Nexar Connect v2.4
+
+Conversão de URL completa do Google Maps com desambiguação automática por localização.
+A função extrai nome, feature ID e coordenadas; usa geocodificação reversa para acrescentar endereço/cidade à consulta e reduzir conflitos entre estabelecimentos homônimos.
+
 # Nexar Connect v2.3
 
 MVP no Netlify + Supabase com:
