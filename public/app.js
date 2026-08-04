@@ -65,6 +65,33 @@ function render() {
 function escapeHtml(v='') { return v.replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch])); }
 $('#search').addEventListener('input', render);
 
+
+async function resolveMapsLink() {
+  const url = $('#mapsUrl').value.trim();
+  const button = $('#resolveMapsBtn');
+  const message = $('#resolverMessage');
+  if (!url) { message.textContent = 'Cole o link compartilhado do Google Maps.'; message.classList.add('error'); return; }
+  button.disabled = true;
+  button.textContent = 'Identificando...';
+  message.textContent = 'Consultando o link público do Google Maps...';
+  message.classList.remove('error');
+  try {
+    const result = await api('resolve-maps', { method:'POST', body:JSON.stringify({ url }) });
+    if (result.name && !$('#name').value.trim()) $('#name').value = result.name;
+    $('#destination').value = result.reviewUrl;
+    message.textContent = `Pronto. Link direto de avaliação criado${result.name ? ` para ${result.name}` : ''}. Confira os dados e clique em Criar QR permanente.`;
+  } catch (err) {
+    message.textContent = `${err.message} Abra a ficha do local, procure “Pedir avaliações” com o proprietário ou cole o link direto no modo manual.`;
+    message.classList.add('error');
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Preencher automaticamente';
+  }
+}
+
+$('#resolveMapsBtn').addEventListener('click', resolveMapsLink);
+$('#mapsUrl').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); resolveMapsLink(); } });
+
 $('#clientForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const editing = $('#editingCode').value;
@@ -78,7 +105,7 @@ $('#clientForm').addEventListener('submit', async (e) => {
   } catch (err) { $('#formMessage').textContent = err.message; }
 });
 
-function resetForm(){ $('#clientForm').reset(); $('#editingCode').value=''; $('#code').disabled=false; $('#formTitle').textContent='Nova empresa'; $('#saveBtn').textContent='Criar QR permanente'; $('#cancelEdit').hidden=true; }
+function resetForm(){ $('#clientForm').reset(); $('#mapsUrl').value=''; $('#resolverMessage').textContent=''; $('#resolverMessage').classList.remove('error'); $('#editingCode').value=''; $('#code').disabled=false; $('#formTitle').textContent='Nova empresa'; $('#saveBtn').textContent='Criar QR permanente'; $('#cancelEdit').hidden=true; }
 $('#cancelEdit').addEventListener('click', resetForm);
 
 $('#clients').addEventListener('click', async (e) => {

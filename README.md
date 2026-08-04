@@ -1,18 +1,33 @@
-# Nexar Connect — Supabase v2.1
+# Nexar Connect v2.2
 
-Correções desta versão:
+MVP no Netlify + Supabase com:
 
-- o endereço `/r/CODIGO` envia corretamente o código para a Function de redirecionamento;
-- a Function também extrai o código do caminho como proteção adicional;
-- o QR é gerado no servidor, sem depender de biblioteca externa carregada no navegador;
-- download do QR em PNG de 1200 px.
+- cadastro, edição e exclusão de empresas;
+- link permanente por empresa;
+- QR Code PNG;
+- contador de acessos;
+- modo automático para link compartilhado do Google Maps;
+- modo manual quando o Google não expõe o Place ID publicamente.
 
-## Variáveis no Netlify
+## Atualização
 
-- `ADMIN_PASSWORD`
-- `SUPABASE_URL`
-- `SUPABASE_SECRET_KEY`
+Copie todo o conteúdo desta pasta para o repositório local, substituindo os arquivos, sem apagar a pasta `.git`.
 
-## Banco
+```powershell
+git add .
+git commit -m "Adiciona conversor de link do Google Maps"
+git push
+```
 
-Execute `supabase/setup.sql` uma vez no SQL Editor do Supabase.
+No Netlify, aguarde o deploy. A lista de Functions deverá incluir `resolve-maps`.
+
+## Como usar
+
+1. No Google Maps, abra a empresa correta.
+2. Clique em **Compartilhar** e copie o link.
+3. No painel, cole no **Modo automático**.
+4. Clique em **Preencher automaticamente**.
+5. Confira nome e link direto de avaliação.
+6. Clique em **Criar QR permanente**.
+
+A extração é feita por dados públicos e não usa a API paga do Google. Alguns formatos do Maps escondem o Place ID; nesses casos, o sistema informa que o modo manual é necessário.
