@@ -117,7 +117,7 @@ async function resolveMapsLink() {
   }
   const button = $('#resolveMapsBtn');
   const message = $('#resolverMessage');
-  if (!url) { message.textContent = 'Cole a URL completa do Google Maps copiada da barra do navegador.'; message.classList.add('error'); return; }
+  if (!url) { message.textContent = 'Cole um link do Google Maps, da Busca Google ou um link direto de avaliação.'; message.classList.add('error'); return; }
 
   // Uma nova conversão sempre substitui os dados anteriores, evitando mistura entre empresas.
   clearCompanyFields();
@@ -142,7 +142,8 @@ async function resolveMapsLink() {
     message.textContent = 'Dados preenchidos. Agora abra o estabelecimento no Maps, teste a avaliação e confirme antes de criar o QR.';
     updateTestButton();
   } catch (err) {
-    message.textContent = `${err.message} Como alternativa, cole o link direto de avaliação no modo manual.`;
+    message.textContent = err.message;
+    if (!/share\.google/i.test(url)) message.textContent += ' Como alternativa, cole o link direto de avaliação no modo manual.';
     message.classList.add('error');
   } finally {
     isResolving = false;

@@ -55,3 +55,12 @@ Cole preferencialmente a URL completa do navegador contendo `!1s0x...:0x...`. O 
 ## v2.6
 - Aceita links do Google Maps colados com ou sem `https://`.
 - Normaliza automaticamente URLs como `google.com/maps/place/...`.
+
+
+## v2.7
+- Aceita URL completa do Google Maps.
+- Aceita links `maps.app.goo.gl` quando o redirecionamento revela o identificador público.
+- Aceita links da Busca Google que já contenham `ludocid`/`#lrd`.
+- Aceita links diretos oficiais de avaliação.
+- Rejeita `share.google` com orientação clara.
+- Reforça a validação no celular antes de imprimir a placa.

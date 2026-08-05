@@ -5,7 +5,8 @@ const GOOGLE_HOSTS = new Set([
   'goo.gl',
   'www.google.com',
   'google.com',
-  'maps.google.com'
+  'maps.google.com',
+  'share.google'
 ]);
 
 function decodeRepeated(value = '') {
@@ -77,6 +78,29 @@ function extractName(finalUrl, html = '') {
   return '';
 }
 
+
+
+function extractLrdFeatureId(text = '') {
+  const decoded = decodeRepeated(text).replace(/%3A/ig, ':');
+  const match = decoded.match(/#lrd=(0x[0-9a-f]+:0x[0-9a-f]+),3/i);
+  return match?.[1]?.toLowerCase() || null;
+}
+
+function extractLudocid(text = '') {
+  try {
+    const u = new URL(text);
+    return u.searchParams.get('ludocid') || null;
+  } catch {
+    const m = decodeRepeated(text).match(/[?&]ludocid=(\d+)/i);
+    return m?.[1] || null;
+  }
+}
+
+function isDirectReviewUrl(text = '') {
+  const decoded = decodeRepeated(text);
+  return /search\.google\.com\/local\/writereview\?placeid=/i.test(decoded)
+    || /#lrd=0x[0-9a-f]+:0x[0-9a-f]+,3/i.test(decoded);
+}
 
 function findFeatureId(text = '') {
   const decoded = decodeRepeated(text)
@@ -193,8 +217,28 @@ export const handler = async (event) => {
     if (!validUrl(sharedUrl)) return json(400, { error: 'Cole um link válido do Google Maps.' });
 
     const input = new URL(sharedUrl);
-    if (!GOOGLE_HOSTS.has(input.hostname.toLowerCase()) && !input.hostname.toLowerCase().endsWith('.google.com')) {
-      return json(400, { error: 'O link precisa ser do Google Maps.' });
+    const host = input.hostname.toLowerCase();
+    if (!GOOGLE_HOSTS.has(host) && !host.endsWith('.google.com')) {
+      return json(400, { error: 'Cole um link do Google Maps, da Busca Google ou um link direto de avaliação.' });
+    }
+
+    if (host === 'share.google') {
+      return json(422, {
+        error: 'Links share.google não revelam de forma confiável o identificador do estabelecimento. No Google Maps, toque em Compartilhar e copie o link maps.app.goo.gl, ou copie a URL completa no computador.',
+        sourceType: 'share-google'
+      });
+    }
+
+    if (isDirectReviewUrl(sharedUrl)) {
+      const featureId = extractLrdFeatureId(sharedUrl);
+      return json(200, {
+        method: 'direct-review',
+        featureId,
+        ludocid: extractLudocid(sharedUrl),
+        name: extractName(sharedUrl, ''),
+        reviewUrl: sharedUrl,
+        resolvedUrl: sharedUrl
+      });
     }
 
     let response = await fetchWithTimeout(sharedUrl, {
@@ -245,7 +289,7 @@ export const handler = async (event) => {
     }
 
     return json(422, {
-      error: 'Não encontrei o identificador público nessa URL. No computador, abra a empresa no Google Maps e copie a URL completa da barra do navegador.',
+      error: 'Não encontrei o identificador público nessa URL. Use a URL completa do Maps, um link maps.app.goo.gl ou um link da Busca Google que já abra a ficha da empresa.',
       resolvedUrl: finalUrl,
       name,
       fallbackUrl: finalUrl
