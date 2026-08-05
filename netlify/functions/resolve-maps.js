@@ -180,17 +180,41 @@ function buildReviewUrlFromFeatureId(featureId, businessName, locationText = '')
   const parts = featureId.split(':');
   if (parts.length !== 2) throw new Error('Identificador do Google Maps inválido.');
   const ludocid = BigInt(parts[1]).toString(10);
-  const query = [businessName || 'empresa', locationText].filter(Boolean).join(' - ');
-  const params = new URLSearchParams({
-    hl: 'pt-BR',
-    gl: 'br',
-    q: query,
-    ludocid
-  });
+  const query = [businessName, locationText].filter(Boolean).join(' - ');
+  const params = new URLSearchParams({ hl: 'pt-BR', gl: 'br', ludocid });
+  // Nunca use o nome genérico "empresa": no celular o Google passa a
+  // pesquisar essa palavra e ignora o identificador real do estabelecimento.
+  if (query) params.set('q', query);
   return {
     ludocid,
     reviewUrl: `https://www.google.com/search?${params.toString()}#lrd=${featureId},3`
   };
+}
+
+async function resolveBusinessFromCid(featureId) {
+  const ludocid = BigInt(featureId.split(':')[1]).toString(10);
+  const cidUrl = `https://www.google.com/maps?cid=${ludocid}&hl=pt-BR`;
+  try {
+    const response = await fetchWithTimeout(cidUrl, {
+      method: 'GET',
+      redirect: 'follow',
+      headers: {
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36',
+        'accept-language': 'pt-BR,pt;q=0.9,en;q=0.7'
+      }
+    }, 12000);
+    const finalUrl = response.url || cidUrl;
+    const html = await response.text();
+    return {
+      name: extractName(finalUrl, html),
+      resolvedUrl: finalUrl,
+      coordinates: extractCoordinates(`${finalUrl}
+${html}`)
+    };
+  } catch (error) {
+    console.warn('cid lookup unavailable', error?.message || error);
+    return { name: '', resolvedUrl: cidUrl, coordinates: null };
+  }
 }
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
@@ -247,8 +271,15 @@ export const handler = async (event) => {
     // redirecionamentos ou variações da página escondam esse identificador.
     const inputFeatureId = findFeatureId(sharedUrl);
     if (inputFeatureId) {
-      const name = extractName(sharedUrl, '');
-      const coordinates = extractCoordinates(sharedUrl);
+      let name = extractName(sharedUrl, '');
+      let coordinates = extractCoordinates(sharedUrl);
+      let canonicalUrl = sharedUrl;
+      if (!name) {
+        const cidData = await resolveBusinessFromCid(inputFeatureId);
+        name = cidData.name || '';
+        coordinates = coordinates || cidData.coordinates;
+        canonicalUrl = cidData.resolvedUrl || sharedUrl;
+      }
       const geo = await reverseGeocode(coordinates);
       const locationText = geo?.shortAddress
         || (coordinates ? `${coordinates.lat}, ${coordinates.lon}` : '');
@@ -261,7 +292,7 @@ export const handler = async (event) => {
         coordinates,
         location: geo,
         reviewUrl: built.reviewUrl,
-        resolvedUrl: sharedUrl
+        resolvedUrl: canonicalUrl
       });
     }
 
@@ -295,20 +326,29 @@ export const handler = async (event) => {
     // 0x...:0x..., converte a segunda parte para ludocid e abre #lrd=...,3.
     const featureId = findFeatureId(combined);
     if (featureId) {
-      const coordinates = extractCoordinates(`${sharedUrl}\n${finalUrl}`);
+      let resolvedName = name;
+      let coordinates = extractCoordinates(`${sharedUrl}
+${finalUrl}`);
+      let canonicalUrl = finalUrl;
+      if (!resolvedName) {
+        const cidData = await resolveBusinessFromCid(featureId);
+        resolvedName = cidData.name || '';
+        coordinates = coordinates || cidData.coordinates;
+        canonicalUrl = cidData.resolvedUrl || finalUrl;
+      }
       const geo = await reverseGeocode(coordinates);
       const locationText = geo?.shortAddress
         || (coordinates ? `${coordinates.lat}, ${coordinates.lon}` : '');
-      const built = buildReviewUrlFromFeatureId(featureId, name, locationText);
+      const built = buildReviewUrlFromFeatureId(featureId, resolvedName, locationText);
       return json(200, {
         method: 'feature-id',
         featureId,
         ludocid: built.ludocid,
-        name,
+        name: resolvedName,
         coordinates,
         location: geo,
         reviewUrl: built.reviewUrl,
-        resolvedUrl: finalUrl
+        resolvedUrl: canonicalUrl
       });
     }
 
