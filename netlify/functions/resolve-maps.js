@@ -9,9 +9,15 @@ const GOOGLE_HOSTS = new Set([
   'share.google'
 ]);
 
+const BROWSER_HEADERS = {
+  'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36',
+  'accept-language': 'pt-BR,pt;q=0.9,en;q=0.7',
+  accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+};
+
 function decodeRepeated(value = '') {
   let current = String(value);
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 4; i += 1) {
     try {
       const decoded = decodeURIComponent(current);
       if (decoded === current) break;
@@ -23,13 +29,23 @@ function decodeRepeated(value = '') {
   return current;
 }
 
-function findPlaceId(text = '') {
-  const decoded = decodeRepeated(text).replace(/\\u003d/g, '=').replace(/\\u0026/g, '&');
+function normalizeGoogleText(value = '') {
+  return decodeRepeated(value)
+    .replace(/\\u003d/gi, '=')
+    .replace(/\\u0026/gi, '&')
+    .replace(/\\u002f/gi, '/')
+    .replace(/%3A/gi, ':');
+}
+
+export function findPlaceId(text = '') {
+  const decoded = normalizeGoogleText(text);
   const patterns = [
-    /(?:placeid|place_id|query_place_id)[=:]%?3?D?([A-Za-z0-9_-]{15,})/i,
+    /(?:placeid|place_id|query_place_id)[=:](?:%3D)?([A-Za-z0-9_-]{15,})/i,
     /[?&](?:placeid|place_id|query_place_id)=([A-Za-z0-9_-]{15,})/i,
+    /lu-rap-thank-you-dialog[^\n]{0,1000}?(ChI[A-Za-z0-9_-]{15,})/i,
     /(?:^|[^A-Za-z0-9_-])(ChI[A-Za-z0-9_-]{15,})(?:[^A-Za-z0-9_-]|$)/,
-    /(?:^|[^A-Za-z0-9_-])(EiJ[A-Za-z0-9_-]{15,})(?:[^A-Za-z0-9_-]|$)/
+    /(?:^|[^A-Za-z0-9_-])(EiJ[A-Za-z0-9_-]{15,})(?:[^A-Za-z0-9_-]|$)/,
+    /(?:^|[^A-Za-z0-9_-])(GhI[A-Za-z0-9_-]{15,})(?:[^A-Za-z0-9_-]|$)/
   ];
   for (const pattern of patterns) {
     const match = decoded.match(pattern);
@@ -43,24 +59,38 @@ function cleanBusinessName(value = '') {
     .replace(/\+/g, ' ')
     .replace(/\s+-\s+Google Maps.*$/i, '')
     .replace(/\s+on Google Maps.*$/i, '')
+    .replace(/^Google Maps\s*[-–—:]?\s*/i, '')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 120);
 }
 
-function extractName(finalUrl, html = '') {
+function isUsefulBusinessName(name = '') {
+  const normalized = cleanBusinessName(name).toLowerCase();
+  return Boolean(normalized)
+    && !['empresa', 'estabelecimento', 'google', 'google maps', 'maps'].includes(normalized)
+    && !/^[-+]?\d+[.,]\d+/.test(normalized)
+    && normalized.length >= 2;
+}
+
+export function extractName(finalUrl, html = '') {
   try {
     const url = new URL(finalUrl);
+    const placeMatch = normalizeGoogleText(url.pathname).match(/\/maps\/place\/([^/]+)/i);
+    if (placeMatch?.[1]) {
+      const name = cleanBusinessName(placeMatch[1]);
+      if (isUsefulBusinessName(name)) return name;
+    }
+
     for (const key of ['q', 'query', 'daddr', 'destination']) {
       const value = url.searchParams.get(key);
-      if (value) {
-        const firstPart = decodeRepeated(value).split(' - ')[0];
-        const name = cleanBusinessName(firstPart);
-        if (name && !/^[-+]?\d+[.,]\d+/.test(name)) return name;
-      }
+      if (!value) continue;
+      const decoded = decodeRepeated(value);
+      // Links curtos frequentemente trazem "Nome - endereço". Mantemos o primeiro trecho.
+      const firstPart = decoded.split(/\s+-\s+/)[0];
+      const name = cleanBusinessName(firstPart);
+      if (isUsefulBusinessName(name)) return name;
     }
-    const placeMatch = decodeRepeated(url.pathname).match(/\/maps\/place\/([^/]+)/i);
-    if (placeMatch?.[1]) return cleanBusinessName(placeMatch[1]);
   } catch {}
 
   const titlePatterns = [
@@ -70,43 +100,15 @@ function extractName(finalUrl, html = '') {
   ];
   for (const pattern of titlePatterns) {
     const match = html.match(pattern);
-    if (match?.[1]) {
-      const name = cleanBusinessName(match[1]);
-      if (name && !/^Google Maps$/i.test(name)) return name;
-    }
+    if (!match?.[1]) continue;
+    const name = cleanBusinessName(match[1]);
+    if (isUsefulBusinessName(name)) return name;
   }
   return '';
 }
 
-
-
-function extractLrdFeatureId(text = '') {
-  const decoded = decodeRepeated(text).replace(/%3A/ig, ':');
-  const match = decoded.match(/#lrd=(0x[0-9a-f]+:0x[0-9a-f]+),3/i);
-  return match?.[1]?.toLowerCase() || null;
-}
-
-function extractLudocid(text = '') {
-  try {
-    const u = new URL(text);
-    return u.searchParams.get('ludocid') || null;
-  } catch {
-    const m = decodeRepeated(text).match(/[?&]ludocid=(\d+)/i);
-    return m?.[1] || null;
-  }
-}
-
-function isDirectReviewUrl(text = '') {
-  const decoded = decodeRepeated(text);
-  return /search\.google\.com\/local\/writereview\?placeid=/i.test(decoded)
-    || /#lrd=0x[0-9a-f]+:0x[0-9a-f]+,3/i.test(decoded);
-}
-
-function findFeatureId(text = '') {
-  const decoded = decodeRepeated(text)
-    .replace(/\\u003d/g, '=')
-    .replace(/\\u0026/g, '&')
-    .replace(/%3A/ig, ':');
+export function findFeatureId(text = '') {
+  const decoded = normalizeGoogleText(text);
   const patterns = [
     /(?:!1s|ftid=)(0x[0-9a-f]+:0x[0-9a-f]+)/i,
     /#lrd=(0x[0-9a-f]+:0x[0-9a-f]+)/i,
@@ -119,9 +121,28 @@ function findFeatureId(text = '') {
   return null;
 }
 
+function extractLrdFeatureId(text = '') {
+  const decoded = normalizeGoogleText(text);
+  const match = decoded.match(/#lrd=(0x[0-9a-f]+:0x[0-9a-f]+),3/i);
+  return match?.[1]?.toLowerCase() || null;
+}
+
+function extractLudocid(text = '') {
+  try {
+    return new URL(text).searchParams.get('ludocid') || null;
+  } catch {
+    return normalizeGoogleText(text).match(/[?&]ludocid=(\d+)/i)?.[1] || null;
+  }
+}
+
+function isDirectReviewUrl(text = '') {
+  const decoded = normalizeGoogleText(text);
+  return /search\.google\.com\/local\/writereview\?placeid=/i.test(decoded)
+    || /#lrd=0x[0-9a-f]+:0x[0-9a-f]+,3/i.test(decoded);
+}
 
 function extractCoordinates(text = '') {
-  const decoded = decodeRepeated(text);
+  const decoded = normalizeGoogleText(text);
   const patterns = [
     /\/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/,
     /!3d(-?\d+(?:\.\d+)?)[^!]*!4d(-?\d+(?:\.\d+)?)/,
@@ -129,13 +150,74 @@ function extractCoordinates(text = '') {
   ];
   for (const pattern of patterns) {
     const match = decoded.match(pattern);
-    if (match) {
-      const lat = Number(match[1]);
-      const lon = Number(match[2]);
-      if (Number.isFinite(lat) && Number.isFinite(lon)) return { lat, lon };
-    }
+    if (!match) continue;
+    const lat = Number(match[1]);
+    const lon = Number(match[2]);
+    if (Number.isFinite(lat) && Number.isFinite(lon)) return { lat, lon };
   }
   return null;
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function extractHtmlRedirect(html = '', baseUrl = '') {
+  const candidates = [
+    html.match(/<meta[^>]+http-equiv=["']?refresh["']?[^>]+content=["'][^"']*url=([^"']+)["']/i)?.[1],
+    html.match(/window\.location(?:\.href|\.replace)?\s*(?:=|\()\s*["']([^"']+)["']/i)?.[1],
+    html.match(/document\.location(?:\.href)?\s*=\s*["']([^"']+)["']/i)?.[1]
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    try { return new URL(candidate, baseUrl).toString(); } catch {}
+  }
+  return null;
+}
+
+async function followGoogleRedirects(startUrl) {
+  let currentUrl = startUrl;
+  let lastHtml = '';
+  const visited = new Set();
+
+  for (let i = 0; i < 7; i += 1) {
+    if (visited.has(currentUrl)) break;
+    visited.add(currentUrl);
+
+    const response = await fetchWithTimeout(currentUrl, {
+      method: 'GET',
+      redirect: 'manual',
+      headers: BROWSER_HEADERS
+    }, 12000);
+
+    const location = response.headers.get('location');
+    if (location && response.status >= 300 && response.status < 400) {
+      currentUrl = new URL(location, currentUrl).toString();
+      continue;
+    }
+
+    lastHtml = await response.text();
+    const htmlRedirect = extractHtmlRedirect(lastHtml, currentUrl);
+    if (htmlRedirect && htmlRedirect !== currentUrl) {
+      currentUrl = htmlRedirect;
+      continue;
+    }
+
+    return { finalUrl: response.url || currentUrl, html: lastHtml };
+  }
+
+  // Fallback: deixa o fetch seguir automaticamente quando o Google usa uma cadeia incomum.
+  const response = await fetchWithTimeout(currentUrl, {
+    method: 'GET',
+    redirect: 'follow',
+    headers: BROWSER_HEADERS
+  }, 12000);
+  return { finalUrl: response.url || currentUrl, html: await response.text() };
 }
 
 async function reverseGeocode(coords) {
@@ -152,7 +234,7 @@ async function reverseGeocode(coords) {
     const response = await fetchWithTimeout(url.toString(), {
       headers: {
         'user-agent': 'NexarConnect/1.0 (+https://nexar-connect.netlify.app)',
-        'referer': 'https://nexar-connect.netlify.app/'
+        referer: 'https://nexar-connect.netlify.app/'
       }
     }, 8000);
     if (!response.ok) return null;
@@ -170,61 +252,87 @@ async function reverseGeocode(coords) {
       postcode
     ].filter(Boolean).join(' - ');
     return { city, state, postcode, shortAddress, displayName: data?.display_name || '' };
-  } catch (error) {
-    console.warn('reverse geocode unavailable', error?.message || error);
+  } catch {
     return null;
   }
 }
 
-function buildReviewUrlFromFeatureId(featureId, businessName, locationText = '') {
+export function buildReviewUrlFromFeatureId(featureId, businessName, locationText = '') {
   const parts = featureId.split(':');
   if (parts.length !== 2) throw new Error('Identificador do Google Maps inválido.');
   const ludocid = BigInt(parts[1]).toString(10);
-  const query = [businessName, locationText].filter(Boolean).join(' - ');
+  const validName = isUsefulBusinessName(businessName) ? cleanBusinessName(businessName) : '';
+  const query = [validName, locationText].filter(Boolean).join(' - ');
   const params = new URLSearchParams({ hl: 'pt-BR', gl: 'br', ludocid });
-  // Nunca use o nome genérico "empresa": no celular o Google passa a
-  // pesquisar essa palavra e ignora o identificador real do estabelecimento.
   if (query) params.set('q', query);
   return {
     ludocid,
-    reviewUrl: `https://www.google.com/search?${params.toString()}#lrd=${featureId},3`
+    reviewUrl: query ? `https://www.google.com/search?${params.toString()}#lrd=${featureId},3` : ''
   };
 }
 
 async function resolveBusinessFromCid(featureId) {
   const ludocid = BigInt(featureId.split(':')[1]).toString(10);
-  const cidUrl = `https://www.google.com/maps?cid=${ludocid}&hl=pt-BR`;
-  try {
-    const response = await fetchWithTimeout(cidUrl, {
-      method: 'GET',
-      redirect: 'follow',
-      headers: {
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36',
-        'accept-language': 'pt-BR,pt;q=0.9,en;q=0.7'
-      }
-    }, 12000);
-    const finalUrl = response.url || cidUrl;
-    const html = await response.text();
-    return {
-      name: extractName(finalUrl, html),
-      resolvedUrl: finalUrl,
-      coordinates: extractCoordinates(`${finalUrl}
-${html}`)
-    };
-  } catch (error) {
-    console.warn('cid lookup unavailable', error?.message || error);
-    return { name: '', resolvedUrl: cidUrl, coordinates: null };
+  const urls = [
+    `https://www.google.com/maps?cid=${ludocid}&hl=pt-BR`,
+    `https://www.google.com/search?hl=pt-BR&gl=br&ludocid=${ludocid}`
+  ];
+
+  let best = { name: '', placeId: '', resolvedUrl: urls[0], coordinates: null, html: '' };
+  for (const url of urls) {
+    try {
+      const resolved = await followGoogleRedirects(url);
+      const combined = `${url}\n${resolved.finalUrl}\n${resolved.html}`;
+      const candidate = {
+        name: extractName(resolved.finalUrl, resolved.html),
+        placeId: findPlaceId(combined) || '',
+        resolvedUrl: resolved.finalUrl || url,
+        coordinates: extractCoordinates(combined),
+        html: resolved.html
+      };
+      if (candidate.placeId) return candidate;
+      if (!best.name && candidate.name) best = candidate;
+      if (!best.coordinates && candidate.coordinates) best.coordinates = candidate.coordinates;
+    } catch {}
   }
+  return best;
 }
 
-async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } finally {
-    clearTimeout(timeout);
+function responseForResolved({ method, sourceType, placeId = '', featureId = '', name = '', resolvedUrl, coordinates = null, location = null }) {
+  if (placeId) {
+    return {
+      method,
+      sourceType,
+      official: true,
+      placeId,
+      featureId: featureId || null,
+      name,
+      coordinates,
+      location,
+      needsName: false,
+      reviewUrl: `https://search.google.com/local/writereview?placeid=${encodeURIComponent(placeId)}`,
+      resolvedUrl
+    };
   }
+
+  if (!featureId) throw new Error('Identificador do estabelecimento não encontrado.');
+  const locationText = location?.shortAddress || (coordinates ? `${coordinates.lat}, ${coordinates.lon}` : '');
+  const built = buildReviewUrlFromFeatureId(featureId, name, locationText);
+  return {
+    method,
+    sourceType,
+    official: false,
+    placeId: null,
+    featureId,
+    ludocid: built.ludocid,
+    name,
+    coordinates,
+    location,
+    locationText,
+    needsName: !isUsefulBusinessName(name),
+    reviewUrl: built.reviewUrl,
+    resolvedUrl
+  };
 }
 
 export const handler = async (event) => {
@@ -236,9 +344,8 @@ export const handler = async (event) => {
     let body;
     try { body = JSON.parse(event.body || '{}'); } catch { return json(400, { error: 'JSON inválido.' }); }
     let sharedUrl = String(body.url || '').trim();
-    // Aceita URLs copiadas sem o protocolo visível, por exemplo google.com/maps/...
     if (sharedUrl && !/^https?:\/\//i.test(sharedUrl)) sharedUrl = `https://${sharedUrl}`;
-    if (!validUrl(sharedUrl)) return json(400, { error: 'Cole um link válido do Google Maps.' });
+    if (!validUrl(sharedUrl)) return json(400, { error: 'Cole um link válido do Google Maps ou da Busca Google.' });
 
     const input = new URL(sharedUrl);
     const host = input.hostname.toLowerCase();
@@ -248,116 +355,100 @@ export const handler = async (event) => {
 
     if (host === 'share.google') {
       return json(422, {
-        error: 'Links share.google não revelam de forma confiável o identificador do estabelecimento. No Google Maps, toque em Compartilhar e copie o link maps.app.goo.gl, ou copie a URL completa no computador.',
+        error: 'Links share.google dependem do aplicativo Google e não revelam o estabelecimento de forma confiável. Abra o local no Google Maps e use Compartilhar para copiar um link maps.app.goo.gl, ou copie a URL completa no computador.',
         sourceType: 'share-google'
       });
     }
 
     if (isDirectReviewUrl(sharedUrl)) {
-      const featureId = extractLrdFeatureId(sharedUrl);
       return json(200, {
         method: 'direct-review',
-        featureId,
+        sourceType: 'direct-review',
+        official: /search\.google\.com\/local\/writereview/i.test(sharedUrl),
+        featureId: extractLrdFeatureId(sharedUrl),
         ludocid: extractLudocid(sharedUrl),
         name: extractName(sharedUrl, ''),
+        needsName: false,
         reviewUrl: sharedUrl,
         resolvedUrl: sharedUrl
       });
     }
 
-    // URLs completas do Google Maps já trazem o identificador público em
-    // qualquer ponto da rota, por exemplo !1s0x...:0x... ou !3m6!1s0x...:0x....
-    // Processamos o próprio link antes de consultar o Google para evitar que
-    // redirecionamentos ou variações da página escondam esse identificador.
+    const sourceType = host === 'maps.app.goo.gl' || host === 'goo.gl'
+      ? 'maps-short'
+      : /\/maps\//i.test(input.pathname) || host === 'maps.google.com'
+        ? 'maps-full'
+        : 'google-search';
+
+    // URLs completas normalmente já contêm tudo e não dependem de redirecionamento.
     const inputFeatureId = findFeatureId(sharedUrl);
-    if (inputFeatureId) {
+    const inputPlaceId = findPlaceId(sharedUrl);
+    if (inputFeatureId || inputPlaceId) {
       let name = extractName(sharedUrl, '');
       let coordinates = extractCoordinates(sharedUrl);
+      let placeId = inputPlaceId || '';
       let canonicalUrl = sharedUrl;
-      if (!name) {
+
+      if (inputFeatureId && (!name || !placeId)) {
         const cidData = await resolveBusinessFromCid(inputFeatureId);
-        name = cidData.name || '';
+        name = name || cidData.name;
+        placeId = placeId || cidData.placeId;
         coordinates = coordinates || cidData.coordinates;
-        canonicalUrl = cidData.resolvedUrl || sharedUrl;
+        canonicalUrl = cidData.resolvedUrl || canonicalUrl;
       }
-      const geo = await reverseGeocode(coordinates);
-      const locationText = geo?.shortAddress
-        || (coordinates ? `${coordinates.lat}, ${coordinates.lon}` : '');
-      const built = buildReviewUrlFromFeatureId(inputFeatureId, name, locationText);
-      return json(200, {
-        method: 'feature-id-input',
-        featureId: inputFeatureId,
-        ludocid: built.ludocid,
-        name,
-        coordinates,
-        location: geo,
-        reviewUrl: built.reviewUrl,
-        resolvedUrl: canonicalUrl
-      });
-    }
 
-    let response = await fetchWithTimeout(sharedUrl, {
-      method: 'GET',
-      redirect: 'follow',
-      headers: {
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36',
-        'accept-language': 'pt-BR,pt;q=0.9,en;q=0.7'
-      }
-    });
-
-    const finalUrl = response.url || sharedUrl;
-    const html = await response.text();
-    const combined = `${sharedUrl}\n${finalUrl}\n${html}`;
-    const name = extractName(finalUrl, html) || extractName(sharedUrl, '');
-
-    // Método oficial quando o Place ID está publicamente disponível.
-    const placeId = findPlaceId(combined);
-    if (placeId) {
-      return json(200, {
-        method: 'place-id',
+      const location = await reverseGeocode(coordinates);
+      return json(200, responseForResolved({
+        method: placeId ? 'place-id' : 'feature-id-input',
+        sourceType,
         placeId,
+        featureId: inputFeatureId,
         name,
-        reviewUrl: `https://search.google.com/local/writereview?placeid=${encodeURIComponent(placeId)}`,
-        resolvedUrl: finalUrl
-      });
-    }
-
-    // Método gratuito para URLs completas do Maps: usa o feature ID público
-    // 0x...:0x..., converte a segunda parte para ludocid e abre #lrd=...,3.
-    const featureId = findFeatureId(combined);
-    if (featureId) {
-      let resolvedName = name;
-      let coordinates = extractCoordinates(`${sharedUrl}
-${finalUrl}`);
-      let canonicalUrl = finalUrl;
-      if (!resolvedName) {
-        const cidData = await resolveBusinessFromCid(featureId);
-        resolvedName = cidData.name || '';
-        coordinates = coordinates || cidData.coordinates;
-        canonicalUrl = cidData.resolvedUrl || finalUrl;
-      }
-      const geo = await reverseGeocode(coordinates);
-      const locationText = geo?.shortAddress
-        || (coordinates ? `${coordinates.lat}, ${coordinates.lon}` : '');
-      const built = buildReviewUrlFromFeatureId(featureId, resolvedName, locationText);
-      return json(200, {
-        method: 'feature-id',
-        featureId,
-        ludocid: built.ludocid,
-        name: resolvedName,
+        resolvedUrl: canonicalUrl,
         coordinates,
-        location: geo,
-        reviewUrl: built.reviewUrl,
-        resolvedUrl: canonicalUrl
+        location
+      }));
+    }
+
+    // Links curtos/mobile e URLs da Busca são expandidos no servidor.
+    const resolved = await followGoogleRedirects(sharedUrl);
+    const combined = `${sharedUrl}\n${resolved.finalUrl}\n${resolved.html}`;
+    let name = extractName(resolved.finalUrl, resolved.html) || extractName(sharedUrl, '');
+    let placeId = findPlaceId(combined) || '';
+    const featureId = findFeatureId(combined);
+    let coordinates = extractCoordinates(combined);
+    let canonicalUrl = resolved.finalUrl || sharedUrl;
+
+    if (featureId && (!name || !placeId)) {
+      const cidData = await resolveBusinessFromCid(featureId);
+      name = name || cidData.name;
+      placeId = placeId || cidData.placeId;
+      coordinates = coordinates || cidData.coordinates;
+      canonicalUrl = cidData.resolvedUrl || canonicalUrl;
+    }
+
+    if (!placeId && !featureId) {
+      return json(422, {
+        error: sourceType === 'google-search'
+          ? 'Essa URL é apenas uma página de resultados e não identifica uma empresa específica. Clique na ficha do estabelecimento e copie a URL do Maps ou use o botão Compartilhar no Google Maps.'
+          : 'Não encontrei o identificador público nessa URL. Abra a ficha específica da empresa no Google Maps e copie novamente o link.',
+        sourceType,
+        resolvedUrl: canonicalUrl,
+        name
       });
     }
 
-    return json(422, {
-      error: 'Não encontrei o identificador público nessa URL. Use a URL completa do Maps, um link maps.app.goo.gl ou um link da Busca Google que já abra a ficha da empresa.',
-      resolvedUrl: finalUrl,
+    const location = await reverseGeocode(coordinates);
+    return json(200, responseForResolved({
+      method: placeId ? 'place-id' : 'feature-id',
+      sourceType,
+      placeId,
+      featureId,
       name,
-      fallbackUrl: finalUrl
-    });
+      resolvedUrl: canonicalUrl,
+      coordinates,
+      location
+    }));
   } catch (err) {
     console.error('resolve maps error', err);
     const message = err?.name === 'AbortError'

@@ -4,6 +4,10 @@ let clients = [];
 let currentQr = null;
 let resolvedMapsUrl = '';
 let resolvedReviewUrl = '';
+let resolvedFeatureId = '';
+let resolvedLudocid = '';
+let resolvedLocationText = '';
+let resolvedOfficial = false;
 let isResolving = false;
 
 async function api(path, options = {}) {
@@ -71,14 +75,38 @@ $('#search').addEventListener('input', render);
 function slugifyCode(name='') {
   return name.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase()
     .replace(/\b(RESTAURANTE|LANCHONETE|PIZZARIA|HOTEL|POUSADA|BAR|LOJA|CLINICA|ACADEMIA)\b/g,' ')
-    .replace(/[^A-Z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,32) || 'EMPRESA';
+    .replace(/[^A-Z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,32);
+}
+
+function buildFallbackReviewUrl() {
+  const name = $('#name').value.trim();
+  if (!resolvedFeatureId || !resolvedLudocid || !name) return '';
+  const query = [name, resolvedLocationText].filter(Boolean).join(' - ');
+  const params = new URLSearchParams({ hl:'pt-BR', gl:'br', q:query, ludocid:resolvedLudocid });
+  return `https://www.google.com/search?${params.toString()}#lrd=${resolvedFeatureId},3`;
+}
+
+function refreshFallbackFromName() {
+  if (resolvedOfficial || !resolvedFeatureId) return;
+  const generated = buildFallbackReviewUrl();
+  resolvedReviewUrl = generated;
+  $('#destination').value = generated;
+  if (!$('#code').value || $('#code').value === 'EMPRESA') $('#code').value = slugifyCode($('#name').value);
+  $('#resolvedName').textContent = $('#name').value.trim() || 'Informe o nome da empresa';
+  updateTestButton();
+  updateSaveAvailability();
 }
 
 function clearResolvedState({ keepMapsUrl = true } = {}) {
   resolvedMapsUrl = '';
   resolvedReviewUrl = '';
+  resolvedFeatureId = '';
+  resolvedLudocid = '';
+  resolvedLocationText = '';
+  resolvedOfficial = false;
   $('#resolvedCard').hidden = true;
   $('#resolvedName').textContent = '—';
+  $('#resolvedMethod').textContent = 'Empresa identificada';
   $('#resolvedLocation').textContent = 'Confira o estabelecimento antes de salvar.';
   $('#confirmedBusiness').checked = false;
   if (!keepMapsUrl) $('#mapsUrl').value = '';
@@ -99,6 +127,7 @@ function beginNewCompany() {
   $('#editingCode').value = '';
   $('#code').disabled = false;
   $('#formTitle').textContent = 'Nova empresa';
+  $('#manualMode').open = false;
   $('#saveBtn').textContent = 'Criar QR permanente';
   $('#saveBtn').disabled = false;
   $('#cancelEdit').hidden = true;
@@ -132,14 +161,31 @@ async function resolveMapsLink() {
   try {
     const result = await api('resolve-maps', { method:'POST', body:JSON.stringify({ url }) });
     resolvedMapsUrl = result.resolvedUrl || url;
-    resolvedReviewUrl = result.reviewUrl;
+    resolvedFeatureId = result.featureId || '';
+    resolvedLudocid = result.ludocid || '';
+    resolvedLocationText = result.locationText || result.location?.shortAddress || '';
+    resolvedOfficial = Boolean(result.official);
+    resolvedReviewUrl = result.reviewUrl || '';
+
     $('#name').value = result.name || '';
-    $('#destination').value = result.reviewUrl;
+    $('#destination').value = resolvedReviewUrl;
     $('#code').value = slugifyCode(result.name || '');
-    $('#resolvedName').textContent = result.name || 'Estabelecimento identificado';
+    $('#resolvedName').textContent = result.name || 'Informe o nome da empresa';
+    $('#resolvedMethod').textContent = result.official
+      ? 'Link oficial identificado por Place ID'
+      : 'Estabelecimento identificado por CID público';
     $('#resolvedLocation').textContent = result.location?.shortAddress || result.location?.displayName || 'Abra no Maps e confira o endereço correto.';
     $('#resolvedCard').hidden = false;
-    message.textContent = 'Dados preenchidos. Agora abra o estabelecimento no Maps, teste a avaliação e confirme antes de criar o QR.';
+
+    if (result.needsName) {
+      $('#manualMode').open = true;
+      message.textContent = 'O Google identificou o local, mas não informou o nome. Digite o nome exato da empresa abaixo; o link será montado automaticamente.';
+      $('#name').focus();
+    } else if (result.official) {
+      message.textContent = 'Link oficial de avaliação identificado. Confira no Maps e teste no celular antes de criar o QR.';
+    } else {
+      message.textContent = 'Link alternativo montado pelo identificador público. Confira no Maps e teste no celular antes de criar o QR.';
+    }
     updateTestButton();
   } catch (err) {
     message.textContent = err.message;
@@ -170,11 +216,13 @@ function updateTestButton() {
 }
 function updateSaveAvailability() {
   const editing = Boolean($('#editingCode').value);
-  const automaticFlow = Boolean(resolvedReviewUrl);
-  $('#saveBtn').disabled = isResolving || (!editing && automaticFlow && !$('#confirmedBusiness').checked);
+  const automaticFlow = Boolean(resolvedFeatureId || resolvedOfficial);
+  const missingRequired = !$('#name').value.trim() || !$('#destination').value.trim();
+  $('#saveBtn').disabled = isResolving || missingRequired || (!editing && automaticFlow && !$('#confirmedBusiness').checked);
 }
 
-$('#destination').addEventListener('input', () => { updateTestButton(); updateSaveAvailability(); });
+$('#name').addEventListener('input', refreshFallbackFromName);
+$('#destination').addEventListener('input', () => { resolvedReviewUrl = $('#destination').value.trim(); updateTestButton(); updateSaveAvailability(); });
 $('#confirmedBusiness').addEventListener('change', updateSaveAvailability);
 $('#testReviewBtn').addEventListener('click', () => {
   const url = $('#destination').value.trim();
