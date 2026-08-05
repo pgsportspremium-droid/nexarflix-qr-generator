@@ -1,83 +1,33 @@
-# Nexar Connect v2.9
+# Nexar Connect v4.0
 
-Conversão de URL completa do Google Maps com desambiguação automática por localização.
-A função extrai nome, feature ID e coordenadas; usa geocodificação reversa para acrescentar endereço/cidade à consulta e reduzir conflitos entre estabelecimentos homônimos.
+Versão refatorada do conversor de links do Google Maps.
 
-# Nexar Connect v2.3
+## Alterações principais
 
-MVP no Netlify + Supabase com:
+- Expansão dedicada de links `maps.app.goo.gl`, com rastreamento de cada redirecionamento.
+- Leitura de URLs completas com `ftid=`, `!1s` e CID em qualquer posição.
+- Extração separada de nome, CID/FTID, Place ID e coordenadas.
+- Geração do link oficial quando um Place ID estiver disponível.
+- Geração do link alternativo `ludocid + #lrd` quando houver apenas CID.
+- Painel de diagnóstico técnico no formulário para mostrar a URL recebida, a URL expandida e os identificadores encontrados.
+- O restante do painel, Supabase, login, cadastro, redirecionamento e geração de QR foi preservado.
 
-- cadastro, edição e exclusão de empresas;
-- link permanente por empresa;
-- QR Code PNG;
-- contador de acessos;
-- modo automático para link compartilhado do Google Maps;
-- modo manual quando o Google não expõe o Place ID publicamente.
+## Publicação
 
-## Atualização
-
-Copie todo o conteúdo desta pasta para o repositório local, substituindo os arquivos, sem apagar a pasta `.git`.
+Copie os arquivos desta versão para a pasta já conectada ao GitHub, preservando a pasta `.git`. Depois execute:
 
 ```powershell
 git add .
-git commit -m "Adiciona conversor de link do Google Maps"
+git commit -m "Refatora conversor de links do Google Maps"
 git push
 ```
 
-No Netlify, aguarde o deploy. A lista de Functions deverá incluir `resolve-maps`.
+Aguarde o deploy automático no Netlify e atualize o painel com `Ctrl + F5`.
 
-## Como usar
+## Diagnóstico
 
-1. No Google Maps, abra a empresa correta.
-2. Clique em **Compartilhar** e copie o link.
-3. No painel, cole no **Modo automático**.
-4. Clique em **Preencher automaticamente**.
-5. Confira nome e link direto de avaliação.
-6. Clique em **Criar QR permanente**.
+Depois de clicar em **Preencher automaticamente**, abra **Diagnóstico técnico do link**. Caso um link falhe, copie o conteúdo desse painel. Ele mostra exatamente o que o Google devolveu ao servidor.
 
-A extração é feita por dados públicos e não usa a API paga do Google. Alguns formatos do Maps escondem o Place ID; nesses casos, o sistema informa que o modo manual é necessário.
+## Limitação conhecida
 
-
-## Conversão gratuita de URL do Google Maps
-Cole preferencialmente a URL completa do navegador contendo `!1s0x...:0x...`. O sistema extrai o feature ID, converte o CID hexadecimal para decimal (`ludocid`) e monta o link de escrita de avaliação com `#lrd=...,3`. Sempre use o botão **Testar avaliação** antes de imprimir a placa.
-
-
-## Versão 2.5
-- limpa automaticamente dados antigos ao analisar uma nova URL;
-- botão Nova empresa;
-- botões separados para abrir no Maps e testar avaliação;
-- confirmação obrigatória antes de salvar no fluxo automático;
-- código sugerido automaticamente;
-- feedback de carregamento;
-- diálogo de sucesso com baixar, copiar, testar e iniciar nova empresa.
-
-
-## v2.6
-- Aceita links do Google Maps colados com ou sem `https://`.
-- Normaliza automaticamente URLs como `google.com/maps/place/...`.
-
-
-## v2.7
-- Aceita URL completa do Google Maps.
-- Aceita links `maps.app.goo.gl` quando o redirecionamento revela o identificador público.
-- Aceita links da Busca Google que já contenham `ludocid`/`#lrd`.
-- Aceita links diretos oficiais de avaliação.
-- Rejeita `share.google` com orientação clara.
-- Reforça a validação no celular antes de imprimir a placa.
-
-
-## Correção v2.8
-
-A conversão agora reconhece o identificador `0x...:0x...` em qualquer posição da URL completa do Google Maps, inclusive variações como `!3m6!1s0x...:0x...`. A URL é processada antes de qualquer redirecionamento externo.
-
-Exemplo validado:
-
-```text
-https://www.google.com/maps/place/Restaurante+611/...!3m6!1s0xa1c7c582cb2e09:0x5be4320c36db7e7c!...
-```
-
-
-## v2.9
-- Corrige links curtos `maps.app.goo.gl` que expandem apenas para `ftid`.
-- Recupera nome e URL canônica pelo CID antes de gerar o link de avaliação.
-- Remove o fallback incorreto `empresa`, que causava pesquisa genérica no celular.
+Quando o Google fornece somente CID/FTID, o link de avaliação usa o formato público `ludocid + #lrd`. Esse formato não é uma API oficial e pode ter comportamento diferente entre navegadores móveis. Quando o Google expõe um Place ID, o sistema usa o link oficial `search.google.com/local/writereview?placeid=...`.

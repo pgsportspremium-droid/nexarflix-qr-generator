@@ -44,6 +44,18 @@
             <button type="button" id="resolveMapsBtn">Preencher automaticamente</button>
           </div>
           <p id="resolverMessage" class="message"></p>
+          <details id="diagnosticsPanel" class="diagnostics" hidden>
+            <summary>Diagnóstico técnico do link</summary>
+            <div class="diagnostic-grid">
+              <div><small>URL recebida</small><code id="diagInput">—</code></div>
+              <div><small>URL expandida</small><code id="diagFinal">—</code></div>
+              <div><small>Nome encontrado</small><code id="diagName">—</code></div>
+              <div><small>FTID/CID</small><code id="diagFeature">—</code></div>
+              <div><small>Place ID</small><code id="diagPlace">—</code></div>
+              <div><small>Modo do link</small><code id="diagMode">—</code></div>
+            </div>
+            <pre id="diagTrace"></pre>
+          </details>
         </div>
 
         <section id="resolvedCard" class="resolved-card" hidden>

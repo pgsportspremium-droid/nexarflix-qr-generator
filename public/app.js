@@ -9,6 +9,7 @@ let resolvedLudocid = '';
 let resolvedLocationText = '';
 let resolvedOfficial = false;
 let isResolving = false;
+let lastDiagnostics = null;
 
 async function api(path, options = {}) {
   const res = await fetch(`/api/${path}`, {
@@ -16,10 +17,28 @@ async function api(path, options = {}) {
     headers: { 'content-type': 'application/json', 'x-admin-password': password, ...(options.headers || {}) }
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'Erro inesperado.');
+  if (!res.ok) { const error = new Error(data.error || 'Erro inesperado.'); error.data = data; throw error; }
   return data;
 }
 
+
+function renderDiagnostics(diag = null) {
+  lastDiagnostics = diag || null;
+  const panel = $('#diagnosticsPanel');
+  if (!panel) return;
+  if (!diag) { panel.hidden = true; panel.open = false; return; }
+  panel.hidden = false;
+  $('#diagInput').textContent = diag.inputUrl || '—';
+  $('#diagFinal').textContent = diag.finalUrl || '—';
+  $('#diagName').textContent = diag.name || 'não informado pelo Google';
+  $('#diagFeature').textContent = diag.featureId || 'não encontrado';
+  $('#diagPlace').textContent = diag.placeId || 'não encontrado';
+  $('#diagMode').textContent = diag.reviewMode || '—';
+  const trace = Array.isArray(diag.trace) ? diag.trace : [];
+  $('#diagTrace').textContent = trace.length
+    ? trace.map(item => `${item.step}. HTTP ${item.status}\n${item.url}${item.location ? `\n→ ${item.location}` : ''}`).join('\n\n')
+    : 'A URL já continha os identificadores; nenhum redirecionamento foi necessário.';
+}
 function showApp() {
   $('#loginView').hidden = true;
   $('#appView').hidden = false;
@@ -110,6 +129,7 @@ function clearResolvedState({ keepMapsUrl = true } = {}) {
   $('#resolvedLocation').textContent = 'Confira o estabelecimento antes de salvar.';
   $('#confirmedBusiness').checked = false;
   if (!keepMapsUrl) $('#mapsUrl').value = '';
+  renderDiagnostics(null);
   updateSaveAvailability();
 }
 
@@ -133,6 +153,7 @@ function beginNewCompany() {
   $('#cancelEdit').hidden = true;
   $('#resolverMessage').textContent = '';
   $('#resolverMessage').classList.remove('error');
+  renderDiagnostics(null);
   clearResolvedState({ keepMapsUrl:false });
   updateTestButton();
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -166,6 +187,7 @@ async function resolveMapsLink() {
     resolvedLocationText = result.locationText || result.location?.shortAddress || '';
     resolvedOfficial = Boolean(result.official);
     resolvedReviewUrl = result.reviewUrl || '';
+    renderDiagnostics(result.diagnostics || null);
 
     $('#name').value = result.name || '';
     $('#destination').value = resolvedReviewUrl;
@@ -188,6 +210,7 @@ async function resolveMapsLink() {
     }
     updateTestButton();
   } catch (err) {
+    renderDiagnostics(err.data?.diagnostics || null);
     message.textContent = err.message;
     if (!/share\.google/i.test(url)) message.textContent += ' Como alternativa, cole o link direto de avaliação no modo manual.';
     message.classList.add('error');
@@ -269,6 +292,7 @@ function resetForm(){
   $('#testReviewBtn').disabled=true;
   $('#resolverMessage').textContent='';
   $('#resolverMessage').classList.remove('error');
+  renderDiagnostics(null);
   $('#editingCode').value='';
   $('#code').disabled=false;
   $('#formTitle').textContent='Nova empresa';
