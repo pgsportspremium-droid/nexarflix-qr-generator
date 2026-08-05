@@ -1,4 +1,4 @@
-# Nexar Connect v2.4
+# Nexar Connect v2.8 v2.4
 
 Conversão de URL completa do Google Maps com desambiguação automática por localização.
 A função extrai nome, feature ID e coordenadas; usa geocodificação reversa para acrescentar endereço/cidade à consulta e reduzir conflitos entre estabelecimentos homônimos.
@@ -64,3 +64,14 @@ Cole preferencialmente a URL completa do navegador contendo `!1s0x...:0x...`. O 
 - Aceita links diretos oficiais de avaliação.
 - Rejeita `share.google` com orientação clara.
 - Reforça a validação no celular antes de imprimir a placa.
+
+
+## Correção v2.8
+
+A conversão agora reconhece o identificador `0x...:0x...` em qualquer posição da URL completa do Google Maps, inclusive variações como `!3m6!1s0x...:0x...`. A URL é processada antes de qualquer redirecionamento externo.
+
+Exemplo validado:
+
+```text
+https://www.google.com/maps/place/Restaurante+611/...!3m6!1s0xa1c7c582cb2e09:0x5be4320c36db7e7c!...
+```

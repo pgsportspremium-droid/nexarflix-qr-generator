@@ -241,6 +241,30 @@ export const handler = async (event) => {
       });
     }
 
+    // URLs completas do Google Maps já trazem o identificador público em
+    // qualquer ponto da rota, por exemplo !1s0x...:0x... ou !3m6!1s0x...:0x....
+    // Processamos o próprio link antes de consultar o Google para evitar que
+    // redirecionamentos ou variações da página escondam esse identificador.
+    const inputFeatureId = findFeatureId(sharedUrl);
+    if (inputFeatureId) {
+      const name = extractName(sharedUrl, '');
+      const coordinates = extractCoordinates(sharedUrl);
+      const geo = await reverseGeocode(coordinates);
+      const locationText = geo?.shortAddress
+        || (coordinates ? `${coordinates.lat}, ${coordinates.lon}` : '');
+      const built = buildReviewUrlFromFeatureId(inputFeatureId, name, locationText);
+      return json(200, {
+        method: 'feature-id-input',
+        featureId: inputFeatureId,
+        ludocid: built.ludocid,
+        name,
+        coordinates,
+        location: geo,
+        reviewUrl: built.reviewUrl,
+        resolvedUrl: sharedUrl
+      });
+    }
+
     let response = await fetchWithTimeout(sharedUrl, {
       method: 'GET',
       redirect: 'follow',
