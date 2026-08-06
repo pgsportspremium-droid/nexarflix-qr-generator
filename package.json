@@ -1,12 +1,17 @@
 {
   "name": "nexar-connect-supabase",
-  "version": "4.0.0",
+  "version": "4.4.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.17.0"
+  },
   "scripts": {
     "dev": "netlify dev"
   },
   "dependencies": {
+    "@sparticuz/chromium": "149.0.0",
+    "puppeteer-core": "25.5.0",
     "qrcode": "^1.5.4"
   },
   "devDependencies": {

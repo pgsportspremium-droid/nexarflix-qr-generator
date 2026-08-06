@@ -5,6 +5,10 @@
 [functions]
   node_bundler = "esbuild"
 
+[functions."resolve-maps"]
+  external_node_modules = ["@sparticuz/chromium", "puppeteer-core"]
+  included_files = ["node_modules/@sparticuz/chromium/bin/**"]
+
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/:splat"
