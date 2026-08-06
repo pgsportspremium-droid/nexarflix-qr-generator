@@ -31,3 +31,12 @@ Depois de clicar em **Preencher automaticamente**, abra **Diagnóstico técnico 
 ## Limitação conhecida
 
 Quando o Google fornece somente CID/FTID, o link de avaliação usa o formato público `ludocid + #lrd`. Esse formato não é uma API oficial e pode ter comportamento diferente entre navegadores móveis. Quando o Google expõe um Place ID, o sistema usa o link oficial `search.google.com/local/writereview?placeid=...`.
+
+## v4.1 — Expansão como Chrome desktop
+
+- links `maps.app.goo.gl` agora são abertos no backend com User-Agent de Chrome para Windows;
+- todos os redirecionamentos HTTP são seguidos antes da análise;
+- redirects por HTML/JavaScript recebem uma segunda requisição;
+- o sistema preserva o parâmetro completo `q=` da URL expandida;
+- o link de avaliação usa nome + endereço completos, reduzindo resultados ambíguos;
+- permanece disponível o diagnóstico técnico da URL final e dos redirects.

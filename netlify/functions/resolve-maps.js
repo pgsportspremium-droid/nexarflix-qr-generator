@@ -93,7 +93,8 @@ export const handler = async (event) => {
     const built = buildReviewLink({
       placeId: business.placeId || '',
       featureId: business.featureId || '',
-      name: business.name || ''
+      name: business.name || '',
+      queryText: business.queryText || ''
     });
 
     return json(200, {
@@ -107,6 +108,7 @@ export const handler = async (event) => {
       needsName: !business.name,
       reviewUrl: built.reviewUrl,
       resolvedUrl: expanded.finalUrl || inputUrl,
+      locationText: business.queryText || '',
       diagnostics: {
         inputUrl,
         finalUrl: expanded.finalUrl || inputUrl,
@@ -114,7 +116,8 @@ export const handler = async (event) => {
         name: business.name || '',
         placeId: business.placeId || '',
         featureId: business.featureId || '',
-        reviewMode: built.official ? 'official-place-id' : 'cid-lrd'
+        reviewMode: built.official ? 'official-place-id' : 'cid-lrd',
+        queryText: business.queryText || ''
       }
     });
   } catch (err) {

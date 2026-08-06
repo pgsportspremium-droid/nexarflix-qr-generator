@@ -1,5 +1,5 @@
 const BROWSER_HEADERS = {
-  'user-agent': 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36',
+  'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36',
   'accept-language': 'pt-BR,pt;q=0.9,en;q=0.7',
   accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
 };
@@ -100,6 +100,18 @@ function nameFromQueryValue(value = '') {
   return isUsefulBusinessName(candidate) ? candidate : '';
 }
 
+export function extractQueryText(urlText = '') {
+  try {
+    const url = new URL(urlText);
+    for (const key of ['q', 'query', 'daddr', 'destination']) {
+      const raw = url.searchParams.get(key) || '';
+      const decoded = decodeRepeated(raw).replace(/\+/g, ' ').replace(/\s+/g, ' ').trim();
+      if (decoded && !/^[-+]?\d+[.,]\d+\s*,/.test(decoded)) return decoded.slice(0, 500);
+    }
+  } catch {}
+  return '';
+}
+
 export function extractBusinessName(urlText = '', html = '') {
   try {
     const url = new URL(urlText);
@@ -150,65 +162,72 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
 }
 
 export async function expandGoogleUrl(startUrl) {
-  let currentUrl = startUrl;
   const trace = [];
-  const visited = new Set();
-  let html = '';
 
-  for (let i = 0; i < 10; i += 1) {
-    if (visited.has(currentUrl)) break;
-    visited.add(currentUrl);
-
-    const response = await fetchWithTimeout(currentUrl, {
-      method: 'GET',
-      redirect: 'manual',
-      headers: BROWSER_HEADERS
-    });
-
-    const location = response.headers.get('location');
-    trace.push({ step: i + 1, url: currentUrl, status: response.status, location: location || null });
-
-    if (location && response.status >= 300 && response.status < 400) {
-      currentUrl = new URL(location, currentUrl).toString();
-      continue;
-    }
-
-    html = await response.text();
-    const redirectInHtml = htmlRedirect(html, currentUrl);
-    if (redirectInHtml && redirectInHtml !== currentUrl) {
-      currentUrl = redirectInHtml;
-      continue;
-    }
-
-    const responseUrl = response.url || currentUrl;
-    if (responseUrl !== currentUrl) currentUrl = responseUrl;
-    break;
-  }
-
-  if (!html) {
-    const response = await fetchWithTimeout(currentUrl, {
+  // Primeiro tentamos exatamente como o Chrome desktop: seguir todos os redirects.
+  // Isso costuma transformar maps.app.goo.gl em google.com/maps?q=...&ftid=...
+  try {
+    const followed = await fetchWithTimeout(startUrl, {
       method: 'GET',
       redirect: 'follow',
       headers: BROWSER_HEADERS
-    });
-    html = await response.text();
-    currentUrl = response.url || currentUrl;
-    trace.push({ step: trace.length + 1, url: currentUrl, status: response.status, location: null });
-  }
+    }, 20000);
+    const html = await followed.text();
+    const finalUrl = followed.url || startUrl;
+    trace.push({ step: 1, url: startUrl, status: followed.status, location: finalUrl !== startUrl ? finalUrl : null });
 
-  return { finalUrl: currentUrl, html, trace };
+    // Algumas respostas ainda entregam um redirect por meta/JavaScript.
+    const redirectInHtml = htmlRedirect(html, finalUrl);
+    if (redirectInHtml && redirectInHtml !== finalUrl) {
+      const second = await fetchWithTimeout(redirectInHtml, {
+        method: 'GET', redirect: 'follow', headers: BROWSER_HEADERS
+      }, 20000);
+      const secondHtml = await second.text();
+      trace.push({ step: 2, url: redirectInHtml, status: second.status, location: second.url || null });
+      return { finalUrl: second.url || redirectInHtml, html: secondHtml, trace };
+    }
+    return { finalUrl, html, trace };
+  } catch (followError) {
+    // Fallback detalhado para diagnóstico quando o redirect automático falha.
+    let currentUrl = startUrl;
+    let html = '';
+    const visited = new Set();
+    for (let i = 0; i < 10; i += 1) {
+      if (visited.has(currentUrl)) break;
+      visited.add(currentUrl);
+      const response = await fetchWithTimeout(currentUrl, {
+        method: 'GET', redirect: 'manual', headers: BROWSER_HEADERS
+      });
+      const location = response.headers.get('location');
+      trace.push({ step: trace.length + 1, url: currentUrl, status: response.status, location: location || null });
+      if (location && response.status >= 300 && response.status < 400) {
+        currentUrl = new URL(location, currentUrl).toString();
+        continue;
+      }
+      html = await response.text();
+      const redirectInHtml = htmlRedirect(html, currentUrl);
+      if (redirectInHtml && redirectInHtml !== currentUrl) {
+        currentUrl = redirectInHtml;
+        continue;
+      }
+      currentUrl = response.url || currentUrl;
+      break;
+    }
+    return { finalUrl: currentUrl, html, trace, followError: String(followError?.message || followError) };
+  }
 }
 
 export function parseGoogleBusiness({ inputUrl, finalUrl, html = '' }) {
   const combined = [inputUrl, finalUrl, html].filter(Boolean).join('\n');
   const featureId = findFeatureId(combined);
   const placeId = findPlaceId(combined);
-  const name = extractBusinessName(finalUrl, html) || extractBusinessName(inputUrl, '');
+  const queryText = extractQueryText(finalUrl) || extractQueryText(inputUrl);
+  const name = extractBusinessName(finalUrl, html) || extractBusinessName(inputUrl, '') || nameFromQueryValue(queryText);
   const coordinates = extractCoordinates(combined);
-  return { featureId, placeId, name, coordinates };
+  return { featureId, placeId, name, coordinates, queryText };
 }
 
-export function buildReviewLink({ placeId = '', featureId = '', name = '', locationText = '' }) {
+export function buildReviewLink({ placeId = '', featureId = '', name = '', locationText = '', queryText = '' }) {
   if (placeId) {
     return {
       official: true,
@@ -221,7 +240,7 @@ export function buildReviewLink({ placeId = '', featureId = '', name = '', locat
   if (parts.length !== 2) throw new Error('Identificador do Google Maps inválido.');
   const ludocid = BigInt(parts[1]).toString(10);
   const validName = isUsefulBusinessName(name) ? cleanBusinessName(name) : '';
-  const query = [validName, locationText].filter(Boolean).join(' - ');
+  const query = String(queryText || '').trim() || [validName, locationText].filter(Boolean).join(' - ');
   const params = new URLSearchParams({ hl: 'pt-BR', gl: 'br', ludocid });
   if (query) params.set('q', query);
   return {
