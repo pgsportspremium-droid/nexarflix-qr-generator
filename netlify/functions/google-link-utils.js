@@ -27,6 +27,30 @@ export function normalizeGoogleText(value = '') {
     .replace(/%3A/gi, ':');
 }
 
+
+function decodeJsEscapes(value = '') {
+  return String(value)
+    .replace(/\\u([0-9a-f]{4})/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/\\x([0-9a-f]{2})/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/\\\//g, '/')
+    .replace(/\\"/g, '"')
+    .replace(/\\n/g, ' ')
+    .replace(/\\t/g, ' ');
+}
+
+function htmlEntityDecode(value = '') {
+  return String(value)
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&amp;/gi, '&');
+}
+
+function normalizedPayload(value = '') {
+  return htmlEntityDecode(decodeJsEscapes(normalizeGoogleText(value)));
+}
+
 export function cleanBusinessName(value = '') {
   return decodeRepeated(value)
     .replace(/\+/g, ' ')
@@ -62,10 +86,11 @@ export function findFeatureId(text = '') {
 }
 
 export function findPlaceId(text = '') {
-  const decoded = normalizeGoogleText(text);
+  const decoded = normalizedPayload(text);
   const patterns = [
     /(?:placeid|place_id|query_place_id)[=:](?:%3D)?([A-Za-z0-9_-]{15,})/i,
     /[?&](?:placeid|place_id|query_place_id)=([A-Za-z0-9_-]{15,})/i,
+    /["'](?:place_id|placeId)["']\s*:\s*["']((?:ChI|EiJ|GhI)[A-Za-z0-9_-]{15,})["']/i,
     /(?:^|[^A-Za-z0-9_-])((?:ChI|EiJ|GhI)[A-Za-z0-9_-]{15,})(?:[^A-Za-z0-9_-]|$)/
   ];
   for (const pattern of patterns) {
@@ -112,7 +137,7 @@ export function extractQueryText(urlText = '') {
   return '';
 }
 
-export function extractBusinessName(urlText = '', html = '') {
+export function extractBusinessName(urlText = '', html = '', featureId = '') {
   try {
     const url = new URL(urlText);
     const placeMatch = normalizeGoogleText(url.pathname).match(/\/maps\/place\/([^/]+)/i);
@@ -126,18 +151,42 @@ export function extractBusinessName(urlText = '', html = '') {
     }
   } catch {}
 
-  const decodedHtml = normalizeGoogleText(html);
+  const decodedHtml = normalizedPayload(html);
   const patterns = [
     /<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i,
     /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i,
+    /<meta[^>]+name=["']twitter:title["'][^>]+content=["']([^"']+)["']/i,
+    /<script[^>]+type=["']application\/ld\+json["'][^>]*>[\s\S]*?["']name["']\s*:\s*["']([^"']+)["']/i,
     /<title[^>]*>([^<]+)<\/title>/i,
-    /\[\"([^\"]{2,120})\",\[[^\]]+\],null,\[[^\]]+\],\"0x[0-9a-f]+:0x[0-9a-f]+\"/i
+    /aria-label=["']([^"']{2,140})["']/i
   ];
   for (const pattern of patterns) {
     const match = decodedHtml.match(pattern);
     if (!match?.[1]) continue;
     const name = cleanBusinessName(match[1]);
     if (isUsefulBusinessName(name)) return name;
+  }
+
+  // Google Maps keeps the place name in a large bootstrap payload. When a
+  // short mobile URL resolves only to ?ftid=..., search around that exact ID.
+  const id = featureId || findFeatureId(decodedHtml) || '';
+  if (id) {
+    const positions = [];
+    let offset = 0;
+    while ((offset = decodedHtml.indexOf(id, offset)) >= 0 && positions.length < 8) {
+      positions.push(offset); offset += id.length;
+    }
+    for (const pos of positions) {
+      const chunk = decodedHtml.slice(Math.max(0, pos - 1800), Math.min(decodedHtml.length, pos + 1800));
+      const quoted = [...chunk.matchAll(/["']([^"'\n]{2,140})["']/g)].map(m => m[1]);
+      for (const raw of quoted.reverse()) {
+        const name = cleanBusinessName(raw);
+        if (!isUsefulBusinessName(name)) continue;
+        if (/^(http|https|0x|ChIJ|maps\.|google\.|pt-BR|Brasil|Brazil)/i.test(name)) continue;
+        if (/^(Aberto|Fechado|Rotas|Salvar|Compartilhar|Avaliações|Fotos|Visão geral)$/i.test(name)) continue;
+        return name;
+      }
+    }
   }
   return '';
 }
@@ -222,7 +271,7 @@ export function parseGoogleBusiness({ inputUrl, finalUrl, html = '' }) {
   const featureId = findFeatureId(combined);
   const placeId = findPlaceId(combined);
   const queryText = extractQueryText(finalUrl) || extractQueryText(inputUrl);
-  const name = extractBusinessName(finalUrl, html) || extractBusinessName(inputUrl, '') || nameFromQueryValue(queryText);
+  const name = extractBusinessName(finalUrl, html, featureId) || extractBusinessName(inputUrl, '', featureId) || nameFromQueryValue(queryText);
   const coordinates = extractCoordinates(combined);
   return { featureId, placeId, name, coordinates, queryText };
 }

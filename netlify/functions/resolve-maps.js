@@ -38,6 +38,28 @@ function directReviewResponse(url) {
   };
 }
 
+
+async function findOfficialPlaceByText(queryText) {
+  const apiKey = String(process.env.GOOGLE_MAPS_API_KEY || '').trim();
+  const textQuery = String(queryText || '').trim();
+  if (!apiKey || !textQuery) return null;
+  const response = await fetch('https://places.googleapis.com/v1/places:searchText', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'X-Goog-Api-Key': apiKey,
+      // ID + displayName are the minimum fields needed here.
+      'X-Goog-FieldMask': 'places.id,places.displayName'
+    },
+    body: JSON.stringify({ textQuery, languageCode: 'pt-BR', regionCode: 'BR', maxResultCount: 1 })
+  });
+  if (!response.ok) return null;
+  const data = await response.json();
+  const place = data?.places?.[0];
+  if (!place?.id) return null;
+  return { placeId: place.id, name: place.displayName?.text || '' };
+}
+
 export const handler = async (event) => {
   const p = preflight(event); if (p) return p;
   const auth = requireAdmin(event); if (!auth.ok) return auth.response;
@@ -107,7 +129,18 @@ export const handler = async (event) => {
       });
     }
 
-    // Sem API paga, o nome nem sempre vem no redirect do celular. Nesse caso o campo fica editável.
+    // When an optional Google Maps API key is configured, convert the public
+    // Maps result into an official Place ID. This makes the review link work
+    // consistently on desktop and mobile. Without the key, keep the existing
+    // public-CID fallback.
+    if (!business.placeId) {
+      const official = await findOfficialPlaceByText(business.queryText || business.name || '');
+      if (official?.placeId) {
+        business.placeId = official.placeId;
+        if (!business.name && official.name) business.name = official.name;
+      }
+    }
+
     const built = buildReviewLink({
       placeId: business.placeId || '',
       featureId: business.featureId || '',

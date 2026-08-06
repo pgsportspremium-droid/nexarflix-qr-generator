@@ -247,15 +247,30 @@ function updateSaveAvailability() {
 $('#name').addEventListener('input', refreshFallbackFromName);
 $('#destination').addEventListener('input', () => { resolvedReviewUrl = $('#destination').value.trim(); updateTestButton(); updateSaveAvailability(); });
 $('#confirmedBusiness').addEventListener('change', updateSaveAvailability);
-$('#testReviewBtn').addEventListener('click', () => {
-  const url = $('#destination').value.trim();
-  if (url) window.open(url, '_blank', 'noopener,noreferrer');
-});
+function openExternal(url, errorTarget = '#formMessage') {
+  const value = String(url || '').trim();
+  if (!/^https?:\/\//i.test(value)) {
+    const target = $(errorTarget);
+    if (target) target.textContent = 'O link de avaliação ainda não foi gerado. Informe o nome ou use o link oficial no modo manual.';
+    return;
+  }
+  // An anchor click is more reliable than window.open in Safari/iPhone and
+  // avoids a silent no-op when popup protection is enabled.
+  const a = document.createElement('a');
+  a.href = value;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+$('#testReviewBtn').addEventListener('click', () => openExternal($('#destination').value, '#formMessage'));
 $('#openMapsBtn').addEventListener('click', () => {
-  if (resolvedMapsUrl) window.open(resolvedMapsUrl, '_blank', 'noopener,noreferrer');
+  if (resolvedMapsUrl) openExternal(resolvedMapsUrl, '#resolverMessage');
 });
 $('#testResolvedReviewBtn').addEventListener('click', () => {
-  if (resolvedReviewUrl) window.open(resolvedReviewUrl, '_blank', 'noopener,noreferrer');
+  openExternal(resolvedReviewUrl, '#resolverMessage');
 });
 
 $('#clientForm').addEventListener('submit', async (e) => {
