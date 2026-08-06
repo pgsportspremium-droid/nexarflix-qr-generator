@@ -5,7 +5,8 @@ import {
   extractBusinessName,
   findFeatureId,
   findPlaceId,
-  parseGoogleBusiness
+  parseGoogleBusiness,
+  resolveFeatureIdDetails
 } from './google-link-utils.js';
 
 const GOOGLE_HOSTS = new Set([
@@ -70,6 +71,23 @@ export const handler = async (event) => {
 
     let business = parseGoogleBusiness({ inputUrl, finalUrl: expanded.finalUrl, html: expanded.html });
 
+    // Links mobile frequentemente expandem apenas para maps.google.com?ftid=... sem nome.
+    // Fazemos então uma segunda resolução pelo CID para obter a ficha canônica /maps/place/NOME/.
+    let cidResolution = null;
+    if (business.featureId && !business.name) {
+      cidResolution = await resolveFeatureIdDetails(business.featureId);
+      business = {
+        featureId: business.featureId || cidResolution.featureId,
+        placeId: business.placeId || cidResolution.placeId,
+        name: business.name || cidResolution.name,
+        coordinates: business.coordinates || cidResolution.coordinates,
+        queryText: business.queryText || cidResolution.queryText
+      };
+      if (cidResolution.finalUrl) expanded.finalUrl = cidResolution.finalUrl;
+      if (cidResolution.html) expanded.html = cidResolution.html;
+      if (cidResolution.trace?.length) expanded.trace.push(...cidResolution.trace);
+    }
+
     // Algumas URLs completas têm o identificador, mas o nome só aparece no HTML/título.
     if ((!business.name || (!business.featureId && !business.placeId)) && sourceType !== 'maps-short') {
       const loaded = await expandGoogleUrl(inputUrl);
@@ -117,7 +135,9 @@ export const handler = async (event) => {
         placeId: business.placeId || '',
         featureId: business.featureId || '',
         reviewMode: built.official ? 'official-place-id' : 'cid-lrd',
-        queryText: business.queryText || ''
+        queryText: business.queryText || '',
+        cid: cidResolution?.cid || null,
+        cidResolvedUrl: cidResolution?.finalUrl || null
       }
     });
   } catch (err) {

@@ -227,6 +227,52 @@ export function parseGoogleBusiness({ inputUrl, finalUrl, html = '' }) {
   return { featureId, placeId, name, coordinates, queryText };
 }
 
+
+export function featureIdToCid(featureId = '') {
+  const parts = String(featureId || '').toLowerCase().split(':');
+  if (parts.length !== 2 || !/^0x[0-9a-f]+$/.test(parts[1])) return '';
+  try { return BigInt(parts[1]).toString(10); } catch { return ''; }
+}
+
+export async function resolveFeatureIdDetails(featureId) {
+  const cid = featureIdToCid(featureId);
+  if (!cid) return { name: '', queryText: '', placeId: '', featureId, coordinates: null, finalUrl: '', html: '', trace: [] };
+
+  // O endpoint por CID costuma transformar um ftid opaco em uma ficha canônica /maps/place/NOME/.
+  // Tentamos duas variantes porque o Google pode responder de forma diferente por região/conta.
+  const candidates = [
+    `https://www.google.com/maps?cid=${cid}&hl=pt-BR`,
+    `https://maps.google.com/maps/place?cid=${cid}&hl=pt-BR`
+  ];
+  const mergedTrace = [];
+  let best = null;
+
+  for (const candidate of candidates) {
+    try {
+      const expanded = await expandGoogleUrl(candidate);
+      mergedTrace.push(...expanded.trace.map(item => ({ ...item, resolver: 'cid' })));
+      const parsed = parseGoogleBusiness({ inputUrl: candidate, finalUrl: expanded.finalUrl, html: expanded.html });
+      const score = (parsed.name ? 4 : 0) + (parsed.placeId ? 3 : 0) + (parsed.queryText ? 2 : 0) + (parsed.coordinates ? 1 : 0);
+      if (!best || score > best.score) best = { ...parsed, finalUrl: expanded.finalUrl, html: expanded.html, score };
+      if (parsed.name && (parsed.placeId || parsed.featureId)) break;
+    } catch (error) {
+      mergedTrace.push({ resolver: 'cid', url: candidate, error: String(error?.message || error) });
+    }
+  }
+
+  return {
+    name: best?.name || '',
+    queryText: best?.queryText || '',
+    placeId: best?.placeId || '',
+    featureId: best?.featureId || featureId,
+    coordinates: best?.coordinates || null,
+    finalUrl: best?.finalUrl || '',
+    html: best?.html || '',
+    trace: mergedTrace,
+    cid
+  };
+}
+
 export function buildReviewLink({ placeId = '', featureId = '', name = '', locationText = '', queryText = '' }) {
   if (placeId) {
     return {
